@@ -2,16 +2,16 @@
 
 Provides lazy path extension methods which are safe in the presence of symlinks.
 
-Noting that `Path::join` and `Path::parent` give incorrect results in the presence of symlinks, there has been a general adoption of `Path::canonicalize` to mitigate this.
+Noting that `Path::parent` gives incorrect results in the presence of symlinks, there has been a general adoption of `Path::canonicalize` to mitigate this.
 This comes, however, with some ergonomic drawbacks (see below).
 
-The intention is to replace eager and early calls to `Path::canonicalize` with late calls to, for example, `PathExt::real_join` and `PathExt::real_parent`.
+The intention is to replace eager and early calls to `Path::canonicalize` with late calls to `PathExt::real_parent`.
 
 In this way, the user's preferred and natural view of their filesystem is preserved, and paths are resolved correctly on a just-in-time basis before requiring to actually touch the filesystem.
 
 ## Rationale
 
-The standard library methods `Path::join` and `Path::parent` are not safe in the presence of symlinks.
+The standard library method `Path::parent` is not safe in the presence of symlinks.
 For background information and a comprehensive analysis see the Plan 9 paper [Getting Dot-Dot Right](https://9p.io/sys/doc/lexnames.html).
 
 So far the Rust community has leaned extensively on `Path::canonicalize` to mitigate this.  While this approach avoids path breakage, it has
@@ -40,7 +40,7 @@ aya> ls -l ~/.config/nushell/*.nu | select name type target
 ╰───┴─────────────────────────────────────┴─────────┴──────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-It would be more ergonomic to avoid surfacing these underlying Nix store paths to the user.
+It would be more ergonomic to avoid surfacing these underlying Nix store paths to the user quite so eagerly.
 
 ### GNU Stow
 
