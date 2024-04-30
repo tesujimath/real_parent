@@ -19,7 +19,7 @@ pub trait PathExt {
 
 impl PathExt for Path {
     fn real_parent(&self) -> io::Result<Option<Cow<'_, Path>>> {
-        if !self.metadata()?.is_symlink() {
+        if !self.symlink_metadata()?.is_symlink() {
             return Ok(self.parent().map(Cow::Borrowed));
         }
 
@@ -36,7 +36,7 @@ impl PathExt for Path {
 
             let path = target;
 
-            if !path.metadata()?.is_symlink() {
+            if !path.symlink_metadata()?.is_symlink() {
                 return Ok(path.parent().map(|p| Cow::Owned(p.to_path_buf())));
             }
         }
