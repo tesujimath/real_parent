@@ -9,3 +9,4 @@ repository = "https://github.com/tesujimath/lazy-realpath"
 readme = "README.md"
 
 [dependencies]
+test-case = "3.3.1"
