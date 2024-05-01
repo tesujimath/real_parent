@@ -40,30 +40,27 @@ fn test_real_parent_files(path: &str, expected: Option<&str>) {
     check_real_parent_ok(path, expected);
 }
 
-// TODO don't ignore
-#[ignore]
 #[test_case("A/B/_b", Some("A/B"))]
 #[test_case("A/B/_a", Some("A"))]
-#[test_case("_x", Some("x"))]
+#[test_case("A/B/C/_a", Some("A"))]
+#[test_case("_B/b", Some("_B"))]
+#[test_case("_x", Some(""))]
 // TODO more test cases
 fn test_real_parent_rel_symlinks(path: &str, expected: Option<&str>) {
     let farm = LinkFarm::new();
 
     farm.file("x")
-        .symlink_rel("x", "_x")
         .dir("A")
         .dir("A/B")
-        .file("A/B/b")
-        .symlink_rel("b", "A/B/_b")
-        .symlink_rel("../a", "A/B/_a")
+        .dir("A/B/C")
         .file("A/a")
-        .dir("A/C")
-        .dir("D")
-        .symlink_rel("../../C", "A/B/_C")
+        .file("A/B/b")
+        .symlink_rel("_x", "x")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/B/_b", "b")
+        .symlink_rel("A/B/_a", "../a")
+        .symlink_rel("A/B/C/_a", "../../a")
         .set_current_dir();
-
-    // TODO remove:
-    // std::thread::sleep(std::time::Duration::from_secs(30));
 
     check_real_parent_ok(path, expected);
 }
@@ -79,9 +76,9 @@ fn test_real_parent_abs_symlinks(path: &str, expected: Option<&str>) {
         .dir("A/C")
         .file("A/B/b")
         .file("A/a")
-        .symlink_abs("A/B/b", "A/B/_b")
-        .symlink_abs("A/a", "A/B/_a")
-        .symlink_abs("A/C", "A/B/_C")
+        .symlink_abs("A/B/_b", "A/B/b")
+        .symlink_abs("A/B/_a", "A/a")
+        .symlink_abs("A/B/_C", "A/C")
         .set_current_dir();
 
     check_real_parent_ok(path, expected.map(|path| farm.absolute(path)));
@@ -142,7 +139,8 @@ impl LinkFarm {
     }
 
     // create symlink to relative path in link farm
-    fn symlink_rel<P: AsRef<Path>, Q: AsRef<Path>>(&self, original: P, link: Q) -> &Self {
+    // note the reversed order of parameters
+    fn symlink_rel<P: AsRef<Path>, Q: AsRef<Path>>(&self, link: P, original: Q) -> &Self {
         let link = self.tempdir.path().join(link);
         if link.is_dir() {
             symlink_dir(original, link).unwrap()
@@ -154,7 +152,8 @@ impl LinkFarm {
     }
 
     // create symlink to absolute path in link farm
-    fn symlink_abs<P: AsRef<Path>, Q: AsRef<Path>>(&self, original: P, link: Q) -> &Self {
+    // note the reversed order of parameters
+    fn symlink_abs<P: AsRef<Path>, Q: AsRef<Path>>(&self, link: P, original: Q) -> &Self {
         let original = self.tempdir.path().join(original);
         let link = self.tempdir.path().join(link);
         if link.is_dir() {
@@ -176,7 +175,7 @@ impl LinkFarm {
                 .unwrap_or(s.strip_prefix('.').unwrap_or(s))
         }
 
-        for entry in WalkDir::new(".").into_iter().skip(1) {
+        for entry in WalkDir::new(".").sort_by_file_name().into_iter().skip(1) {
             let entry = entry.unwrap();
             let t = entry.file_type();
             if t.is_dir() {
