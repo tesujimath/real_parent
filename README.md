@@ -48,6 +48,22 @@ It would be more ergonomic to avoid surfacing these underlying Nix store paths t
 
 Use of GNU Stow results in extensive symlink farms, with files appearing to exist in well-known directories alongside one another, where in reality they are symlinks to various locations in the filesystem.
 
+## Running Tests
+
+The tests rely on the current working directory being set to a tempdir for each test.
+Since the current working directory is a process-wide resource, this means tests must be run single threaded.
+
+`cargo nextest` has been configured to run single-threaded.  If using the default `libtest` runner, be sure to invoke as:
+
+```
+cargo test -- --test-threads=1
+```
+
+Or, more simply:
+```
+cargo nextest run
+```
+
 ## License
 
 Licensed under either of

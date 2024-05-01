@@ -1,0 +1,3 @@
+[profile.default]
+# tests rely on current working directory, which is process-wide
+test-threads = 1
