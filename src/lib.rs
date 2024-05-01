@@ -1,9 +1,9 @@
 use std::{
     borrow::Cow,
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     fmt::Display,
     io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 /// Extension methods for `std::path::Path` which are correct in the presence of symlinks.
@@ -39,13 +39,14 @@ impl PathExt for Path {
 
         loop {
             let target = path.read_link().with_path_context(&path)?;
-            if target.is_relative() {
-                // target = path.parent().join(&target);
-                println!("{:?} is a relative symlink, death", self);
-                todo!("relative symlinks not yet implemented");
-            }
+            let path = if target.is_relative() {
+                println!("resolving relative target {:?}", &target);
+                resolve_relative_symlink(&path, &target)
+            } else {
+                target
+            };
 
-            let path = target;
+            println!("resolved path {:?}", &path);
 
             if !path
                 .symlink_metadata()
@@ -58,6 +59,40 @@ impl PathExt for Path {
             println!("resolved {:?} is a symlink, looping again", self);
         }
     }
+}
+
+// TODO this is naive; needs to touch the filesystem
+fn resolve_relative_symlink<P1, P2>(origin: P1, relpath: P2) -> PathBuf
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
+    let origin = origin.as_ref();
+    let relpath = relpath.as_ref();
+    let mut resolved = origin.components().collect::<Vec<_>>();
+
+    // discard the last path component before we start
+    resolved.pop();
+
+    for component in relpath.components() {
+        use Component::*;
+
+        match component {
+            CurDir => (),
+            Prefix(_) | RootDir => panic!(
+                "impossible absolute component in relative path {:?}",
+                relpath
+            ),
+            ParentDir => {
+                resolved.pop();
+            }
+            normal @ Normal(_) => {
+                resolved.push(normal);
+            }
+        }
+    }
+
+    resolved.into_iter().collect::<PathBuf>()
 }
 
 /// Our error type is an io:Error which includes the path which failed
@@ -92,3 +127,5 @@ impl<T> PathContext<T> for Result<T, io::Error> {
         })
     }
 }
+
+mod tests;

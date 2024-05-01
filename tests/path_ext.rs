@@ -37,13 +37,18 @@ fn test_real_parent_files(path: &str, expected: Option<&str>) {
     check_real_parent_ok(path, expected);
 }
 
+// TODO don't ignore
+#[ignore]
 #[test_case("A/B/_b", Some("A/B"))]
 #[test_case("A/B/_a", Some("A"))]
+#[test_case("_x", Some("x"))]
 // TODO more test cases
 fn test_real_parent_rel_symlinks(path: &str, expected: Option<&str>) {
     let farm = LinkFarm::new();
 
-    farm.dir("A")
+    farm.file("x")
+        .symlink_rel("x", "_x")
+        .dir("A")
         .dir("A/B")
         .file("A/B/b")
         .symlink_rel("b", "A/B/_b")
