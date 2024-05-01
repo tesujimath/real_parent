@@ -25,11 +25,14 @@ impl PathExt for Path {
             .with_path_context(self)?
             .is_symlink()
         {
-            println!("{:?} not a symlink, returning simple parent", self);
+            println!(
+                "{} not a symlink, returning simple parent",
+                self.to_string_lossy()
+            );
             return Ok(self.parent().map(Cow::Borrowed));
         }
 
-        println!("{:?} is a symlink, looping", self);
+        println!("{} is a symlink, looping", self.to_string_lossy());
 
         // we'll have to loop until we find something that's not a symlink,
         // being careful not to get trapped in a cycle of symlinks
@@ -40,23 +43,23 @@ impl PathExt for Path {
         loop {
             let target = path.read_link().with_path_context(&path)?;
             let path = if target.is_relative() {
-                println!("resolving relative target {:?}", &target);
                 resolve_relative_symlink(&path, &target)
             } else {
                 target
             };
-
-            println!("resolved path {:?}", &path);
 
             if !path
                 .symlink_metadata()
                 .with_path_context(&path)?
                 .is_symlink()
             {
-                println!("resolved {:?} not a symlink, returning simple parent", self);
+                println!(
+                    "{} not a symlink, returning simple parent",
+                    path.to_string_lossy()
+                );
                 return Ok(path.parent().map(|p| Cow::Owned(p.to_path_buf())));
             }
-            println!("resolved {:?} is a symlink, looping again", self);
+            println!("{} is a symlink, looping again", path.to_string_lossy());
         }
     }
 }

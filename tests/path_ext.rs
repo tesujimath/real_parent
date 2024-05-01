@@ -65,6 +65,24 @@ fn test_real_parent_rel_symlinks(path: &str, expected: Option<&str>) {
     check_real_parent_ok(path, expected);
 }
 
+// TODO don't ignore
+#[ignore]
+#[test_case("A/B/C/_b", Some("A/B"))]
+// TODO more test cases
+fn test_real_parent_rel_indirect_symlinks(path: &str, expected: Option<&str>) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/B/b")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/B/C/_b", "../../../_B/b")
+        .set_current_dir();
+
+    check_real_parent_ok(path, expected);
+}
+
 #[test_case("A/B/_b", Some("A/B"))]
 #[test_case("A/B/_a", Some("A"))]
 #[test_case("A/B/_C", Some("A"))]
@@ -202,6 +220,7 @@ impl LinkFarm {
                 .unwrap();
             }
         }
+        writeln!(&mut w).unwrap()
     }
 }
 
