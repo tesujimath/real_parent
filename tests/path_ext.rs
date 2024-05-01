@@ -5,6 +5,7 @@ use std::os::unix::fs::{symlink as symlink_dir, symlink as symlink_file};
 use std::os::windows::fs::{symlink as symlink_dir, symlink as symlink_file};
 use std::{
     env::set_current_dir,
+    ffi::OsStr,
     fmt::Debug,
     fs::{self, create_dir},
     path::{Path, PathBuf},
@@ -18,13 +19,15 @@ use test_case::test_case;
 // - relative symlinks have an underscore prefix
 // - absolute symlinks have an equals prefix
 
+#[test_case("x", Some(""))]
 #[test_case("A/a", Some("A"))]
 #[test_case("A/B/b", Some("A/B"))]
 #[test_case("A/B/C", Some("A/B"))]
 fn test_real_parent_files(path: &str, expected: Option<&str>) {
     let farm = LinkFarm::new();
 
-    farm.dir("A")
+    farm.file("x")
+        .dir("A")
         .dir("A/B")
         .dir("A/B/C")
         .file("A/a")
@@ -50,6 +53,9 @@ fn test_real_parent_rel_symlinks(path: &str, expected: Option<&str>) {
         .dir("D")
         .symlink_rel("../../C", "A/B/_C")
         .set_current_dir();
+
+    // TODO remove:
+    // std::thread::sleep(std::time::Duration::from_secs(30));
 
     check_real_parent_ok(path, expected);
 }
@@ -149,6 +155,13 @@ impl LinkFarm {
     }
 }
 
+fn is_empty<P>(path: P) -> bool
+where
+    P: AsRef<Path>,
+{
+    AsRef::<OsStr>::as_ref(path.as_ref()).is_empty()
+}
+
 fn check_real_parent_ok<P1, P2>(path: P1, expected: Option<P2>)
 where
     P1: AsRef<Path> + Debug,
@@ -160,12 +173,14 @@ where
             (Some(actual), Some(expected)) => {
                 let expected = expected.as_ref();
                 assert_eq!(actual, expected, "logical paths for {:?}", path);
-                assert_eq!(
-                    actual.canonicalize().unwrap(),
-                    expected.canonicalize().unwrap(),
-                    "canonical paths for {:?}",
-                    path
-                );
+                if !is_empty(&actual) {
+                    assert_eq!(
+                        actual.canonicalize().unwrap(),
+                        expected.canonicalize().unwrap(),
+                        "canonical paths for {:?}",
+                        path
+                    );
+                }
             }
             (Some(actual), None) => panic!("expected None got Some({:?})", actual),
             (None, Some(expected)) => panic!("expected Some({:?}) got None", expected),

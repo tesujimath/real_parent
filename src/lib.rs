@@ -34,11 +34,13 @@ impl PathExt for Path {
         // we'll have to loop until we find something that's not a symlink,
         // being careful not to get trapped in a cycle of symlinks
         let path = self.to_path_buf();
+        // TODO track visited so we don't get so trapped
         let visited: HashSet<PathBuf, _> = HashSet::new();
 
         loop {
             let target = path.read_link().with_path_context(&path)?;
             if target.is_relative() {
+                // target = path.parent().join(&target);
                 println!("{:?} is a relative symlink, death", self);
                 todo!("relative symlinks not yet implemented");
             }
