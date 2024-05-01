@@ -1,3 +1,4 @@
+#![cfg(test)]
 use lazy_realpath::PathExt;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::{symlink as symlink_dir, symlink as symlink_file};
@@ -7,11 +8,13 @@ use std::{
     env::set_current_dir,
     ffi::OsStr,
     fmt::Debug,
-    fs::{self, create_dir},
+    fs::{self, create_dir, read_link},
+    io::{stdout, Write},
     path::{Path, PathBuf},
 };
 use tempfile::{tempdir, TempDir};
 use test_case::test_case;
+use walkdir::WalkDir;
 
 // Naming for files and directories in the link farms is as follows:
 // - directories are capitalised
@@ -96,8 +99,12 @@ impl LinkFarm {
     }
 
     // change current directory to root of link farm
-    fn set_current_dir(&self) {
+    fn set_current_dir(&self) -> &Self {
         set_current_dir(self.tempdir.path()).unwrap();
+
+        self.dump(stdout());
+
+        self
     }
 
     // return absolute path within link farm
@@ -157,6 +164,45 @@ impl LinkFarm {
         }
 
         self
+    }
+
+    /// dump the link farm as a diagnostic
+    fn dump<W>(&self, mut w: W)
+    where
+        W: Write,
+    {
+        fn strip_dot(s: &str) -> &str {
+            s.strip_prefix("./")
+                .unwrap_or(s.strip_prefix('.').unwrap_or(s))
+        }
+
+        for entry in WalkDir::new(".").into_iter().skip(1) {
+            let entry = entry.unwrap();
+            let t = entry.file_type();
+            if t.is_dir() {
+                writeln!(
+                    &mut w,
+                    "{}/",
+                    strip_dot(entry.path().to_string_lossy().as_ref())
+                )
+                .unwrap();
+            } else if t.is_file() {
+                writeln!(
+                    &mut w,
+                    "{}",
+                    strip_dot(entry.path().to_string_lossy().as_ref())
+                )
+                .unwrap();
+            } else if t.is_symlink() {
+                writeln!(
+                    &mut w,
+                    "{} -> {}",
+                    strip_dot(entry.path().to_string_lossy().as_ref()),
+                    read_link(entry.path()).unwrap().to_string_lossy()
+                )
+                .unwrap();
+            }
+        }
     }
 }
 

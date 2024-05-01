@@ -8,6 +8,7 @@ homepage = "https://github.com/tesujimath/lazy-realpath"
 repository = "https://github.com/tesujimath/lazy-realpath"
 readme = "README.md"
 
-[dependencies]
+[dev-dependencies]
 tempfile = "3.10.1"
 test-case = "3.3.1"
+walkdir = "2.5.0"

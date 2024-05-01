@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{HashSet, VecDeque},
+    collections::HashSet,
     fmt::Display,
     io,
     path::{Component, Path, PathBuf},
