@@ -1,5 +1,5 @@
 #![cfg(test)]
-use lazy_realpath::PathExt;
+use lazy_realpath::{Error, PathExt};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::{symlink as symlink_dir, symlink as symlink_file};
 #[cfg(target_family = "windows")]
@@ -26,7 +26,15 @@ use walkdir::WalkDir;
 #[test_case("A/a", "A")]
 #[test_case("A/B/b", "A/B")]
 #[test_case("A/B/C", "A/B")]
-fn test_real_parent_files(path: &str, expected: &str) {
+#[test_case("A/B/C/..", "A/B/C/../..")]
+#[test_case("A/B/C/.", "A/B"; "trailing dot is ignored")]
+#[test_case("A/./B/C", "A/./B"; "intermediate dot remains")]
+#[test_case("A/../A/B/C", "A/../A/B"; "intermediate dotdot remains")]
+#[test_case("", ".."; "empty path")]
+#[test_case(".", ".."; "bare dot")]
+#[test_case("..", "../.."; "bare dotdot")]
+#[test_case("../../../../../../../../../..", "../../../../../../../../../../.."; "dotdot overflow is ignored")]
+fn test_real_parent_files_directories(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.file("x")
@@ -245,9 +253,13 @@ where
     P2: AsRef<Path> + Debug,
 {
     let path: &Path = path.as_ref();
-    match path.real_parent() {
+    let expected: &Path = expected.as_ref();
+    is_expected_ok(path, path.real_parent(), expected)
+}
+
+fn is_expected_ok(path: &Path, actual: Result<PathBuf, Error>, expected: &Path) {
+    match actual {
         Ok(actual) => {
-            let expected = expected.as_ref();
             assert_eq!(actual, expected, "logical paths for {:?}", path);
             if !is_empty(&actual) {
                 assert_eq!(

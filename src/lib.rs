@@ -65,10 +65,6 @@ fn symlink_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
 
 fn dir_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
     let result: Result<Cow<'_, Path>, Error> = match path.file_name() {
-        Some(file_name) if file_name == DOT => {
-            println!("dir_parent(\"{}\") ends in dot", path.to_string_lossy());
-            path.parent().unwrap().real_parent().map(|p| p.into())
-        }
         Some(file_name) => {
             println!(
                 "dir_parent(\"{}\") ends in other \"{}\"",
@@ -78,9 +74,14 @@ fn dir_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
             Ok(path.parent().unwrap().into())
         }
         None => {
-            println!("dir_parent(\"{}\") ends in dotdot", path.to_string_lossy());
-            // don't attempt to fold away dotdot in the base path
-            Ok(path.join(DOTDOT).into())
+            if path == AsRef::<Path>::as_ref(DOT) {
+                println!("dir_parent(\"{}\") is dot", path.to_string_lossy());
+                Ok(Into::<PathBuf>::into(DOTDOT).into())
+            } else {
+                println!("dir_parent(\"{}\") ends in dotdot", path.to_string_lossy());
+                // don't attempt to fold away dotdot in the base path
+                Ok(path.join(DOTDOT).into())
+            }
         }
     };
 
