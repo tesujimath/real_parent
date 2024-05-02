@@ -30,6 +30,9 @@ use walkdir::WalkDir;
 #[test_case("A/B/C/.", "A/B"; "trailing dot is ignored")]
 #[test_case("A/./B/C", "A/./B"; "intermediate dot remains")]
 #[test_case("A/../A/B/C", "A/../A/B"; "intermediate dotdot remains")]
+#[test_case("A/.D", "A" ; "hidden directory")]
+#[test_case("A/.D/d", "A/.D" ; "file in hidden directory")]
+#[test_case("A/.D/.d", "A/.D" ; "hidden file in hidden directory")]
 #[test_case("", ".."; "empty path")]
 #[test_case(".", ".."; "bare dot")]
 #[test_case("..", "../.."; "bare dotdot")]
@@ -41,11 +44,13 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
         .dir("A")
         .dir("A/B")
         .dir("A/B/C")
+        .dir("A/.D")
         .file("A/a")
         .file("A/B/b")
-        .set_current_dir();
+        .file("A/.D/d")
+        .file("A/.D/.d");
 
-    check_real_parent_ok(path, expected);
+    check_real_parent_ok(&farm, path, expected);
 }
 
 #[test_case("A/B/_b", "A/B")]
@@ -75,10 +80,9 @@ fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
         .symlink_rel("A/B/_B", ".")
         .symlink_rel("A/B/_b", "b")
         .symlink_rel("A/B/_a", "../a")
-        .symlink_rel("A/B/C/_a", "../../a")
-        .set_current_dir();
+        .symlink_rel("A/B/C/_a", "../../a");
 
-    check_real_parent_ok(path, expected);
+    check_real_parent_ok(&farm, path, expected);
 }
 
 // TODO don't ignore
@@ -93,10 +97,9 @@ fn test_real_parent_rel_indirect_symlinks(path: &str, expected: &str) {
         .dir("A/B/C")
         .file("A/B/b")
         .symlink_rel("_B", "A/B")
-        .symlink_rel("A/B/C/_b", "../../../_B/b")
-        .set_current_dir();
+        .symlink_rel("A/B/C/_b", "../../../_B/b");
 
-    check_real_parent_ok(path, expected);
+    check_real_parent_ok(&farm, path, expected);
 }
 
 #[test_case("A/B/_b", "A/B")]
@@ -112,10 +115,9 @@ fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
         .file("A/a")
         .symlink_abs("A/B/_b", "A/B/b")
         .symlink_abs("A/B/_a", "A/a")
-        .symlink_abs("A/B/_C", "A/C")
-        .set_current_dir();
+        .symlink_abs("A/B/_C", "A/C");
 
-    check_real_parent_ok(path, farm.absolute(expected));
+    check_real_parent_ok(&farm, path, farm.absolute(expected));
 }
 
 struct LinkFarm {
@@ -133,8 +135,6 @@ impl LinkFarm {
     fn set_current_dir(&self) -> &Self {
         set_current_dir(self.tempdir.path()).unwrap();
 
-        self.dump(stdout());
-
         self
     }
 
@@ -144,6 +144,14 @@ impl LinkFarm {
         P: AsRef<Path>,
     {
         self.tempdir.path().join(path)
+    }
+
+    fn contains<P>(&self, path: P) -> bool
+    where
+        P: AsRef<Path>,
+    {
+        let path = path.as_ref();
+        path.starts_with(self.tempdir.path())
     }
 
     // create directory in link farm
@@ -247,20 +255,52 @@ where
     AsRef::<OsStr>::as_ref(path.as_ref()).is_empty()
 }
 
-fn check_real_parent_ok<P1, P2>(path: P1, expected: P2)
+// check real_parent() is as expected, with both absolute and relative paths
+fn check_real_parent_ok<P1, P2>(farm: &LinkFarm, path: P1, expected: P2)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
 {
     let path: &Path = path.as_ref();
     let expected: &Path = expected.as_ref();
-    is_expected_ok(path, path.real_parent(), expected)
+
+    // so we can see what went wrong in any failing test
+    farm.dump(stdout());
+
+    // test with relative paths
+    farm.set_current_dir();
+    let actual = path.real_parent();
+    is_expected_ok(path, actual, expected, true);
+
+    // test with absolute paths
+    let other_dir = tempdir().unwrap();
+    set_current_dir(other_dir.path()).unwrap();
+    let abs_path = farm.absolute(path);
+    let abs_expected = farm.absolute(expected);
+    let actual = abs_path.real_parent();
+
+    // if we ascended out of the farm rootdir it's not straigtforward to verify the logical path
+    // that was returned, so we simply check the canonical version matches what was expected
+    let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
+    is_expected_ok(
+        abs_path.as_path(),
+        actual,
+        abs_expected.as_path(),
+        check_logical,
+    );
 }
 
-fn is_expected_ok(path: &Path, actual: Result<PathBuf, Error>, expected: &Path) {
+fn is_expected_ok(
+    path: &Path,
+    actual: Result<PathBuf, Error>,
+    expected: &Path,
+    check_logical: bool,
+) {
     match actual {
         Ok(actual) => {
-            assert_eq!(actual, expected, "logical paths for {:?}", path);
+            if check_logical {
+                assert_eq!(actual, expected, "logical paths for {:?}", path);
+            }
             if !is_empty(&actual) {
                 assert_eq!(
                     actual.canonicalize().unwrap(),

@@ -67,7 +67,7 @@ fn dir_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
     let result: Result<Cow<'_, Path>, Error> = match path.file_name() {
         Some(file_name) => {
             println!(
-                "dir_parent(\"{}\") ends in other \"{}\"",
+                "dir_parent(\"{}\") with file_name == \"{}\"",
                 path.to_string_lossy(),
                 file_name.to_string_lossy()
             );
