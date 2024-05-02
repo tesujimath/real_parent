@@ -13,7 +13,11 @@ pub trait PathExt {
     /// As per `Path::parent` except that it touches the filesystem to ensure that the resulting path
     /// is correct with respect to symlinks.
     ///
-    /// Any symlink expansion is minimal, as described above.
+    /// Any symlink expansion is minimal, as described above.  Therefore no attempt is made to fold away
+    /// dotdot in the path.
+    ///
+    /// Differences from `Path::parent`
+    /// - `".."parent() == ""`, which is incorrect, so `"..".real_parent() == "../.."`
     fn real_parent(&self) -> Result<PathBuf, Error>;
 }
 
