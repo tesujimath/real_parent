@@ -48,6 +48,7 @@ fn test_real_parent_files(path: &str, expected: &str) {
 #[test_case("A/B/_A", "")]
 #[test_case("A/B/_B", "A")]
 #[test_case("_B/.", "A")]
+#[test_case("_B/..", "")]
 #[test_case("_x", "")]
 // TODO more test cases
 fn test_real_parent_rel_symlinks(path: &str, expected: &str) {

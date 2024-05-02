@@ -14,25 +14,28 @@ pub trait PathExt {
     /// is correct with respect to symlinks.
     ///
     /// Any symlink expansion is minimal, as described above.
-    fn real_parent(&self) -> Result<Cow<Path>, Error>;
+    fn real_parent(&self) -> Result<PathBuf, Error>;
 }
 
 impl PathExt for Path {
-    fn real_parent(&self) -> Result<Cow<'_, Path>, Error> {
+    fn real_parent(&self) -> Result<PathBuf, Error> {
         if self.as_os_str().is_empty() {
-            let parent = Path::new("..");
-            let _metadata = parent.symlink_metadata().with_path_context(parent)?;
-            Ok(parent.into())
+            Ok(DOTDOT.into())
         } else {
-            let metadata = self.symlink_metadata().with_path_context(self)?;
+            // Trailing dot is troublesome.  The problem is, it looks like a directory to symlink_metadata(),
+            // but is invisible to file_name().  We mitigate that inconsistency with a light clean, via components().
+            let path = self.components().collect::<PathBuf>();
+            let metadata = path.symlink_metadata().with_path_context(&path)?;
 
-            if metadata.is_symlink() {
-                symlink_parent(self)
+            let parent = if metadata.is_symlink() {
+                symlink_parent(&path)
             } else if metadata.is_dir() {
-                dir_parent(self)
+                dir_parent(&path)
             } else {
-                file_parent(self)
-            }
+                file_parent(&path)
+            };
+
+            parent.map(|p| p.into())
         }
     }
 }
@@ -53,22 +56,35 @@ fn symlink_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
         target
     };
 
-    resolved_target.real_parent().map(|p| p.into_owned().into())
+    resolved_target.real_parent().map(|p| p.into())
 }
 
 fn dir_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
-    let result: Cow<'_, Path> = match path.file_name() {
-        Some(_) => path.parent().unwrap().into(),
-        None => path.join("..").into(), // TODO check for overflow error
+    let result: Result<Cow<'_, Path>, Error> = match path.file_name() {
+        Some(file_name) if file_name == DOT => {
+            println!("dir_parent({}) ends in dot", path.to_string_lossy());
+            path.parent().unwrap().real_parent().map(|p| p.into())
+        }
+        Some(file_name) if file_name == DOTDOT => {
+            println!("dir_parent({}) ends in dotdot", path.to_string_lossy());
+            // TODO this isn't very good:
+            real_join(path, DOTDOT).map(|p| p.into())
+        }
+        Some(file_name) => {
+            println!(
+                "dir_parent({}) ends in other {}",
+                path.to_string_lossy(),
+                file_name.to_string_lossy()
+            );
+            Ok(path.parent().unwrap().into())
+        }
+        // TODO should we do better than this?
+        None => Ok(path.join(DOTDOT).into()), // TODO check for overflow error
     };
 
-    println!(
-        "dir_parent({}) = {}",
-        path.to_string_lossy(),
-        result.to_string_lossy()
-    );
+    println!("dir_parent({}) = {:?}", path.to_string_lossy(), result);
 
-    Ok(result)
+    result
 }
 
 fn file_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
@@ -162,3 +178,6 @@ impl<T> PathContext<T> for Result<T, io::Error> {
         self.map_err(|io_error| Error::IO(io_error, path.as_ref().to_path_buf()))
     }
 }
+
+const DOT: &str = ".";
+const DOTDOT: &str = "..";
