@@ -22,11 +22,11 @@ use walkdir::WalkDir;
 // - relative symlinks have an underscore prefix
 // - absolute symlinks have an equals prefix
 
-#[test_case("x", Some(""))]
-#[test_case("A/a", Some("A"))]
-#[test_case("A/B/b", Some("A/B"))]
-#[test_case("A/B/C", Some("A/B"))]
-fn test_real_parent_files(path: &str, expected: Option<&str>) {
+#[test_case("x", "")]
+#[test_case("A/a", "A")]
+#[test_case("A/B/b", "A/B")]
+#[test_case("A/B/C", "A/B")]
+fn test_real_parent_files(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.file("x")
@@ -40,13 +40,17 @@ fn test_real_parent_files(path: &str, expected: Option<&str>) {
     check_real_parent_ok(path, expected);
 }
 
-#[test_case("A/B/_b", Some("A/B"))]
-#[test_case("A/B/_a", Some("A"))]
-#[test_case("A/B/C/_a", Some("A"))]
-#[test_case("_B/b", Some("_B"))]
-#[test_case("_x", Some(""))]
+#[test_case("A/B/_b", "A/B")]
+#[test_case("A/B/_a", "A")]
+#[test_case("A/B/C/_a", "A")]
+#[test_case("_B/b", "_B")]
+#[test_case("A/_A", "..")]
+#[test_case("A/B/_A", "")]
+#[test_case("A/B/_B", "A")]
+#[test_case("_B/.", "A")]
+#[test_case("_x", "")]
 // TODO more test cases
-fn test_real_parent_rel_symlinks(path: &str, expected: Option<&str>) {
+fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.file("x")
@@ -57,6 +61,9 @@ fn test_real_parent_rel_symlinks(path: &str, expected: Option<&str>) {
         .file("A/B/b")
         .symlink_rel("_x", "x")
         .symlink_rel("_B", "A/B")
+        .symlink_rel("A/_A", "..")
+        .symlink_rel("A/B/_A", "..")
+        .symlink_rel("A/B/_B", ".")
         .symlink_rel("A/B/_b", "b")
         .symlink_rel("A/B/_a", "../a")
         .symlink_rel("A/B/C/_a", "../../a")
@@ -67,9 +74,9 @@ fn test_real_parent_rel_symlinks(path: &str, expected: Option<&str>) {
 
 // TODO don't ignore
 #[ignore]
-#[test_case("A/B/C/_b", Some("A/B"))]
+#[test_case("A/B/C/_b", "A/B")]
 // TODO more test cases
-fn test_real_parent_rel_indirect_symlinks(path: &str, expected: Option<&str>) {
+fn test_real_parent_rel_indirect_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.dir("A")
@@ -83,10 +90,10 @@ fn test_real_parent_rel_indirect_symlinks(path: &str, expected: Option<&str>) {
     check_real_parent_ok(path, expected);
 }
 
-#[test_case("A/B/_b", Some("A/B"))]
-#[test_case("A/B/_a", Some("A"))]
-#[test_case("A/B/_C", Some("A"))]
-fn test_real_parent_abs_symlinks(path: &str, expected: Option<&str>) {
+#[test_case("A/B/_b", "A/B")]
+#[test_case("A/B/_a", "A")]
+#[test_case("A/B/_C", "A")]
+fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.dir("A")
@@ -99,7 +106,7 @@ fn test_real_parent_abs_symlinks(path: &str, expected: Option<&str>) {
         .symlink_abs("A/B/_C", "A/C")
         .set_current_dir();
 
-    check_real_parent_ok(path, expected.map(|path| farm.absolute(path)));
+    check_real_parent_ok(path, farm.absolute(expected));
 }
 
 struct LinkFarm {
@@ -231,30 +238,25 @@ where
     AsRef::<OsStr>::as_ref(path.as_ref()).is_empty()
 }
 
-fn check_real_parent_ok<P1, P2>(path: P1, expected: Option<P2>)
+fn check_real_parent_ok<P1, P2>(path: P1, expected: P2)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
 {
     let path: &Path = path.as_ref();
     match path.real_parent() {
-        Ok(actual) => match (actual, expected) {
-            (Some(actual), Some(expected)) => {
-                let expected = expected.as_ref();
-                assert_eq!(actual, expected, "logical paths for {:?}", path);
-                if !is_empty(&actual) {
-                    assert_eq!(
-                        actual.canonicalize().unwrap(),
-                        expected.canonicalize().unwrap(),
-                        "canonical paths for {:?}",
-                        path
-                    );
-                }
+        Ok(actual) => {
+            let expected = expected.as_ref();
+            assert_eq!(actual, expected, "logical paths for {:?}", path);
+            if !is_empty(&actual) {
+                assert_eq!(
+                    actual.canonicalize().unwrap(),
+                    expected.canonicalize().unwrap(),
+                    "canonical paths for {:?}",
+                    path
+                );
             }
-            (Some(actual), None) => panic!("expected None got Some({:?})", actual),
-            (None, Some(expected)) => panic!("expected Some({:?}) got None", expected),
-            (None, None) => (),
-        },
+        }
         Err(e) => panic!("real_parent({:?}) failed unexpectedly: {:?}", path, e),
     }
 }

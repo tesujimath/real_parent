@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    collections::HashSet,
     fmt::Display,
     io,
     path::{Component, Path, PathBuf},
@@ -15,86 +14,99 @@ pub trait PathExt {
     /// is correct with respect to symlinks.
     ///
     /// Any symlink expansion is minimal, as described above.
-    fn real_parent(&self) -> Result<Option<Cow<Path>>, Error>;
+    fn real_parent(&self) -> Result<Cow<Path>, Error>;
 }
 
 impl PathExt for Path {
-    fn real_parent(&self) -> Result<Option<Cow<'_, Path>>, Error> {
-        if !self
-            .symlink_metadata()
-            .with_path_context(self)?
-            .is_symlink()
-        {
-            println!(
-                "{} not a symlink, returning simple parent",
-                self.to_string_lossy()
-            );
-            return Ok(self.parent().map(Cow::Borrowed));
-        }
+    fn real_parent(&self) -> Result<Cow<'_, Path>, Error> {
+        if self.as_os_str().is_empty() {
+            let parent = Path::new("..");
+            let _metadata = parent.symlink_metadata().with_path_context(parent)?;
+            Ok(parent.into())
+        } else {
+            let metadata = self.symlink_metadata().with_path_context(self)?;
 
-        println!("{} is a symlink, looping", self.to_string_lossy());
-
-        // we'll have to loop until we find something that's not a symlink,
-        // being careful not to get trapped in a cycle of symlinks
-        let path = self.to_path_buf();
-        // TODO track visited so we don't get so trapped
-        let visited: HashSet<PathBuf, _> = HashSet::new();
-
-        loop {
-            let target = path.read_link().with_path_context(&path)?;
-            let path = if target.is_relative() {
-                match resolve_relative_symlink(&path, &target)? {
-                    Some(path) => path,
-                    None => return Ok(None),
-                }
+            if metadata.is_symlink() {
+                symlink_parent(self)
+            } else if metadata.is_dir() {
+                dir_parent(self)
             } else {
-                target
-            };
-
-            if !path
-                .symlink_metadata()
-                .with_path_context(&path)?
-                .is_symlink()
-            {
-                println!(
-                    "{} not a symlink, returning simple parent",
-                    path.to_string_lossy()
-                );
-                return Ok(path.parent().map(|p| Cow::Owned(p.to_path_buf())));
+                file_parent(self)
             }
-            println!("{} is a symlink, looping again", path.to_string_lossy());
         }
     }
 }
 
-// resolve a symlink relative to `origin`
-fn resolve_relative_symlink<P1, P2>(origin: P1, target: P2) -> Result<Option<PathBuf>, Error>
+fn symlink_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
+    println!("symlink_parent({})", path.to_string_lossy());
+
+    // we'll have to recurse until we find something that's not a symlink,
+    // TODO be careful not to get trapped in a cycle of symlinks
+    let target = path.read_link().with_path_context(path)?;
+
+    // unwrap is safe because the last path component is a symlink
+    let symlink_dir = path.parent().unwrap();
+
+    let resolved_target = if target.is_relative() {
+        real_join(symlink_dir, &target)?
+    } else {
+        target
+    };
+
+    resolved_target.real_parent().map(|p| p.into_owned().into())
+}
+
+fn dir_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
+    let result: Cow<'_, Path> = match path.file_name() {
+        Some(_) => path.parent().unwrap().into(),
+        None => path.join("..").into(), // TODO check for overflow error
+    };
+
+    println!(
+        "dir_parent({}) = {}",
+        path.to_string_lossy(),
+        result.to_string_lossy()
+    );
+
+    Ok(result)
+}
+
+fn file_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
+    println!("file_parent({})", path.to_string_lossy());
+
+    Ok(path.parent().unwrap().into())
+}
+
+// join paths
+// TODO maybe this should be public
+fn real_join<P1, P2>(origin: P1, other: P2) -> Result<PathBuf, Error>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
 {
     let origin = origin.as_ref();
-    let target = target.as_ref();
+    let other = other.as_ref();
 
     let mut resolving = origin.to_path_buf();
-    resolving.pop();
 
-    for component in target.components() {
+    println!(
+        "calculating real_join({}, {})",
+        origin.to_string_lossy(),
+        other.to_string_lossy()
+    );
+
+    for component in other.components() {
         use Component::*;
 
         match component {
             CurDir => (),
-            Prefix(_) | RootDir => panic!(
-                "impossible absolute component in relative path {:?}",
-                target
-            ),
+            Prefix(_) | RootDir => {
+                panic!("impossible absolute component in relative path {:?}", other)
+            }
             ParentDir => {
+                println!("calling {}.real_parent()", resolving.to_string_lossy());
                 match resolving.as_path().real_parent() {
-                    Ok(None) => {
-                        // fell off the top
-                        return Ok(None);
-                    }
-                    Ok(Some(path)) => {
+                    Ok(path) => {
                         resolving = path.to_path_buf();
                     }
                     Err(e) => {
@@ -109,25 +121,28 @@ where
     }
 
     println!(
-        "resolved {} -> {} as {}",
+        "real_join({}, {}) = {}",
         origin.to_string_lossy(),
-        target.to_string_lossy(),
+        other.to_string_lossy(),
         resolving.to_string_lossy()
     );
 
-    Ok(Some(resolving))
+    Ok(resolving)
 }
 
 /// Our error type is an io:Error which includes the path which failed
 #[derive(Debug)]
-pub struct Error {
-    io_error: io::Error,
-    path: PathBuf,
+pub enum Error {
+    IO(io::Error, PathBuf),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} on {}", self.io_error, self.path.to_string_lossy())
+        use Error::*;
+
+        match self {
+            IO(e, path) => write!(f, "{} on {}", e, path.to_string_lossy()),
+        }
     }
 }
 
@@ -144,9 +159,6 @@ impl<T> PathContext<T> for Result<T, io::Error> {
     where
         P: AsRef<Path>,
     {
-        self.map_err(|io_error| Error {
-            io_error,
-            path: path.as_ref().to_path_buf(),
-        })
+        self.map_err(|io_error| Error::IO(io_error, path.as_ref().to_path_buf()))
     }
 }
