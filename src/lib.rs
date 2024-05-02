@@ -41,7 +41,7 @@ impl PathExt for Path {
 }
 
 fn symlink_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
-    println!("symlink_parent({})", path.to_string_lossy());
+    println!("symlink_parent(\"{}\")", path.to_string_lossy());
 
     // we'll have to recurse until we find something that's not a symlink,
     // TODO be careful not to get trapped in a cycle of symlinks
@@ -62,27 +62,24 @@ fn symlink_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
 fn dir_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
     let result: Result<Cow<'_, Path>, Error> = match path.file_name() {
         Some(file_name) if file_name == DOT => {
-            println!("dir_parent({}) ends in dot", path.to_string_lossy());
+            println!("dir_parent(\"{}\") ends in dot", path.to_string_lossy());
             path.parent().unwrap().real_parent().map(|p| p.into())
-        }
-        Some(file_name) if file_name == DOTDOT => {
-            println!("dir_parent({}) ends in dotdot", path.to_string_lossy());
-            // TODO this isn't very good:
-            real_join(path, DOTDOT).map(|p| p.into())
         }
         Some(file_name) => {
             println!(
-                "dir_parent({}) ends in other {}",
+                "dir_parent(\"{}\") ends in other \"{}\"",
                 path.to_string_lossy(),
                 file_name.to_string_lossy()
             );
             Ok(path.parent().unwrap().into())
         }
-        // TODO should we do better than this?
-        None => Ok(path.join(DOTDOT).into()), // TODO check for overflow error
+        None => {
+            println!("dir_parent(\"{}\") ends in dotdot", path.to_string_lossy());
+            real_join(path, DOTDOT).map(|p| p.into())
+        }
     };
 
-    println!("dir_parent({}) = {:?}", path.to_string_lossy(), result);
+    println!("dir_parent(\"{}\") = {:?}", path.to_string_lossy(), result);
 
     result
 }
@@ -106,7 +103,7 @@ where
     let mut resolving = origin.to_path_buf();
 
     println!(
-        "calculating real_join({}, {})",
+        "calculating real_join(\"{}\", \"{}\")",
         origin.to_string_lossy(),
         other.to_string_lossy()
     );
@@ -117,10 +114,13 @@ where
         match component {
             CurDir => (),
             Prefix(_) | RootDir => {
-                panic!("impossible absolute component in relative path {:?}", other)
+                panic!(
+                    "impossible absolute component in relative path \"{}\"",
+                    other.to_string_lossy()
+                )
             }
             ParentDir => {
-                println!("calling {}.real_parent()", resolving.to_string_lossy());
+                println!("calling \"{}\".real_parent()", resolving.to_string_lossy());
                 match resolving.as_path().real_parent() {
                     Ok(path) => {
                         resolving = path.to_path_buf();
@@ -137,7 +137,7 @@ where
     }
 
     println!(
-        "real_join({}, {}) = {}",
+        "real_join(\"{}\", \"{}\") = \"{}\"",
         origin.to_string_lossy(),
         other.to_string_lossy(),
         resolving.to_string_lossy()
