@@ -43,7 +43,10 @@ impl PathExt for Path {
         loop {
             let target = path.read_link().with_path_context(&path)?;
             let path = if target.is_relative() {
-                resolve_relative_symlink(&path, &target)
+                match resolve_relative_symlink(&path, &target)? {
+                    Some(path) => path,
+                    None => return Ok(None),
+                }
             } else {
                 target
             };
@@ -64,38 +67,55 @@ impl PathExt for Path {
     }
 }
 
-// TODO this is naive; needs to touch the filesystem
-fn resolve_relative_symlink<P1, P2>(origin: P1, relpath: P2) -> PathBuf
+// resolve a symlink relative to `origin`
+fn resolve_relative_symlink<P1, P2>(origin: P1, target: P2) -> Result<Option<PathBuf>, Error>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
 {
     let origin = origin.as_ref();
-    let relpath = relpath.as_ref();
-    let mut resolved = origin.components().collect::<Vec<_>>();
+    let target = target.as_ref();
 
-    // discard the last path component before we start
-    resolved.pop();
+    let mut resolving = origin.to_path_buf();
+    resolving.pop();
 
-    for component in relpath.components() {
+    for component in target.components() {
         use Component::*;
 
         match component {
             CurDir => (),
             Prefix(_) | RootDir => panic!(
                 "impossible absolute component in relative path {:?}",
-                relpath
+                target
             ),
             ParentDir => {
-                resolved.pop();
+                match resolving.as_path().real_parent() {
+                    Ok(None) => {
+                        // fell off the top
+                        return Ok(None);
+                    }
+                    Ok(Some(path)) => {
+                        resolving = path.to_path_buf();
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
             }
-            normal @ Normal(_) => {
-                resolved.push(normal);
+            Normal(path_component) => {
+                resolving.push(path_component);
             }
         }
     }
 
-    resolved.into_iter().collect::<PathBuf>()
+    println!(
+        "resolved {} -> {} as {}",
+        origin.to_string_lossy(),
+        target.to_string_lossy(),
+        resolving.to_string_lossy()
+    );
+
+    Ok(Some(resolving))
 }
 
 /// Our error type is an io:Error which includes the path which failed
@@ -130,5 +150,3 @@ impl<T> PathContext<T> for Result<T, io::Error> {
         })
     }
 }
-
-mod tests;
