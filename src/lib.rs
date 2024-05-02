@@ -75,7 +75,8 @@ fn dir_parent(path: &Path) -> Result<Cow<'_, Path>, Error> {
         }
         None => {
             println!("dir_parent(\"{}\") ends in dotdot", path.to_string_lossy());
-            real_join(path, DOTDOT).map(|p| p.into())
+            // don't attempt to fold away dotdot in the base path
+            Ok(path.join(DOTDOT).into())
         }
     };
 
