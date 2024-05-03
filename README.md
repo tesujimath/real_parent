@@ -64,6 +64,8 @@ Or, more simply:
 cargo nextest run
 ```
 
+Also, since the tests create symbolic links, to run the tests on Windows you need to run as administrator. 🤯
+
 ## License
 
 Licensed under either of
