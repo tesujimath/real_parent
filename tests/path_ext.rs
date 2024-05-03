@@ -85,8 +85,6 @@ fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
     check_real_parent_ok(&farm, path, expected);
 }
 
-// TODO don't ignore
-#[ignore]
 #[test_case("A/B/C/_b", "A/B")]
 // TODO more test cases
 fn test_real_parent_rel_indirect_symlinks(path: &str, expected: &str) {
@@ -207,38 +205,41 @@ impl LinkFarm {
         self
     }
 
+    fn strip_prefix<'a>(&self, path: &'a Path) -> &'a Path {
+        path.strip_prefix(self.tempdir.path()).unwrap_or(path)
+    }
+
     /// dump the link farm as a diagnostic
     fn dump<W>(&self, mut w: W)
     where
         W: Write,
     {
-        fn strip_dot(s: &str) -> &str {
-            s.strip_prefix("./")
-                .unwrap_or(s.strip_prefix('.').unwrap_or(s))
-        }
-
-        for entry in WalkDir::new(".").sort_by_file_name().into_iter().skip(1) {
+        for entry in WalkDir::new(self.tempdir.path())
+            .sort_by_file_name()
+            .into_iter()
+            .skip(1)
+        {
             let entry = entry.unwrap();
             let t = entry.file_type();
             if t.is_dir() {
                 writeln!(
                     &mut w,
                     "{}/",
-                    strip_dot(entry.path().to_string_lossy().as_ref())
+                    self.strip_prefix(entry.path()).to_string_lossy().as_ref()
                 )
                 .unwrap();
             } else if t.is_file() {
                 writeln!(
                     &mut w,
                     "{}",
-                    strip_dot(entry.path().to_string_lossy().as_ref())
+                    self.strip_prefix(entry.path()).to_string_lossy().as_ref()
                 )
                 .unwrap();
             } else if t.is_symlink() {
                 writeln!(
                     &mut w,
                     "{} -> {}",
-                    strip_dot(entry.path().to_string_lossy().as_ref()),
+                    self.strip_prefix(entry.path()).to_string_lossy().as_ref(),
                     read_link(entry.path()).unwrap().to_string_lossy()
                 )
                 .unwrap();
