@@ -63,7 +63,6 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
 #[test_case("_B/.", "A")]
 #[test_case("_B/..", "_B/../..")] // we don't attempt to fold away dotdot in base path
 #[test_case("_x", "")]
-// TODO more test cases
 fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
@@ -123,6 +122,40 @@ fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
     check_real_parent_ok(&farm, path, farm.absolute(expected));
 }
 
+#[test_case("A/_a1")]
+#[test_case("A/B/_b1")]
+fn test_real_parent_symlink_cycle_error(path: &str) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .symlink_rel("A/_a1", "_a2")
+        .symlink_rel("A/_a2", "_a1")
+        .symlink_rel("A/B/_b1", "../_b2")
+        .symlink_rel("A/_b2", "B/_b3")
+        .symlink_rel("A/B/_b3", "C/_b4")
+        .symlink_rel("A/B/C/_b4", "../_b1");
+
+    check_real_parent_err(&farm, path, ErrorKind::Cycle);
+}
+
+#[test_case("_a", "A/A/A")]
+fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/A")
+        .dir("A/A/A")
+        .file("A/A/A/a")
+        .symlink_rel("_a", "A/_a")
+        .symlink_rel("A/_a", "A/_a")
+        .symlink_rel("A/A/_a", "A/a");
+
+    check_real_parent_ok(&farm, path, expected);
+}
+
+#[derive(Debug)]
 struct LinkFarm {
     tempdir: TempDir,
 }
@@ -318,4 +351,48 @@ fn is_expected_ok(
         }
         Err(e) => panic!("real_parent({:?}) failed unexpectedly: {:?}", path, e),
     }
+}
+
+// check real_parent() is the expected error, just for relative path
+fn check_real_parent_err<P>(farm: &LinkFarm, path: P, expected_error_kind: ErrorKind)
+where
+    P: AsRef<Path> + Debug,
+{
+    let path: &Path = path.as_ref();
+
+    // so we can see what went wrong in any failing test
+    farm.dump(stdout());
+
+    // test with relative paths
+    farm.set_current_dir();
+
+    match path.real_parent() {
+        Ok(_) => panic!(
+            "expected {:?} but real_parent({}) succeeded",
+            expected_error_kind,
+            path.to_string_lossy()
+        ),
+        Err(Error::IO(e, error_path)) => assert_eq!(
+            ErrorKind::Io,
+            expected_error_kind,
+            "expected error {:?} but got {} on {}",
+            expected_error_kind,
+            e,
+            error_path.to_string_lossy(),
+        ),
+        Err(Error::Cycle(error_path)) => assert_eq!(
+            ErrorKind::Cycle,
+            expected_error_kind,
+            "expected error {:?} but got {:?} on {}",
+            expected_error_kind,
+            ErrorKind::Cycle,
+            error_path.to_string_lossy(),
+        ),
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+enum ErrorKind {
+    Io,
+    Cycle,
 }
