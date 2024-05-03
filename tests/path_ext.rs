@@ -140,6 +140,23 @@ fn test_real_parent_symlink_cycle_error(path: &str) {
     check_real_parent_err(&farm, path, ErrorKind::Cycle);
 }
 
+#[test_case("X")]
+#[test_case("X/y")]
+#[test_case("A/y")]
+#[test_case("_a")]
+#[test_case("_b")]
+fn test_real_parent_io_error(path: &str) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .file("A/B/b")
+        .symlink_rel("_a", "A/a")
+        .symlink_rel("_b", "A/B/C/b");
+
+    check_real_parent_err(&farm, path, ErrorKind::Io);
+}
+
 #[test_case("_a", "A/A/A")]
 fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
     let farm = LinkFarm::new();
@@ -368,14 +385,14 @@ where
 
     match path.real_parent() {
         Ok(_) => panic!(
-            "expected {:?} but real_parent({}) succeeded",
+            "expected {:?} error but real_parent({}) succeeded",
             expected_error_kind,
             path.to_string_lossy()
         ),
         Err(Error::IO(e, error_path)) => assert_eq!(
             ErrorKind::Io,
             expected_error_kind,
-            "expected error {:?} but got {} on {}",
+            "expected {:?} error but got {} on {}",
             expected_error_kind,
             e,
             error_path.to_string_lossy(),
@@ -383,7 +400,7 @@ where
         Err(Error::Cycle(error_path)) => assert_eq!(
             ErrorKind::Cycle,
             expected_error_kind,
-            "expected error {:?} but got {:?} on {}",
+            "expected {:?} error but got {:?} on {}",
             expected_error_kind,
             ErrorKind::Cycle,
             error_path.to_string_lossy(),
