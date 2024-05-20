@@ -1,6 +1,6 @@
-# lazy-realpath
+# real_parent
 
-Provides lazy path extension methods which are safe in the presence of symlinks.
+Provides path extension methods which are safe in the presence of symlinks, in particular `real_parent`.
 
 Noting that `Path::parent` gives incorrect results in the presence of symlinks, there has been a general adoption of `Path::canonicalize` to mitigate this.
 This comes, however, with some ergonomic drawbacks (see below).

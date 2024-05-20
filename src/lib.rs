@@ -7,7 +7,7 @@ use std::{
 };
 
 /// Extension methods for `std::path::Path` which are correct in the presence of symlinks.
-/// These methods are lazy, that is, they preserve as much as possible of the relative and
+/// These methods preserve as much as possible of the relative and
 /// symlinked nature of their arguments, minimally resolving symlinks are necessary to maintain
 /// physical path correctness.
 pub trait PathExt {

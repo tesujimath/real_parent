@@ -1,9 +1,9 @@
 #![cfg(test)]
-use lazy_realpath::{Error, PathExt};
+use real_parent::{Error, PathExt};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::{symlink as symlink_dir, symlink as symlink_file};
 #[cfg(target_family = "windows")]
-use std::os::windows::fs::{symlink_dir as symlink_dir, symlink_file as symlink_file};
+use std::os::windows::fs::{symlink_dir, symlink_file};
 use std::{
     env::set_current_dir,
     ffi::OsStr,

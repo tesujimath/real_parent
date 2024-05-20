@@ -1,11 +1,11 @@
 [package]
-name = "lazy_realpath"
+name = "real_parent"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "Lazy and symlink-safe path extensions"
-homepage = "https://github.com/tesujimath/lazy-realpath"
-repository = "https://github.com/tesujimath/lazy-realpath"
+description = "Symlink-safe path extension for parent directory"
+homepage = "https://github.com/tesujimath/real_parent"
+repository = "https://github.com/tesujimath/real_parent"
 readme = "README.md"
 
 [dev-dependencies]
