@@ -54,16 +54,16 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
     check_real_parent_ok(&farm, path, expected);
 }
 
-#[test_case("A/B/_b", "A/B")]
-#[test_case("A/B/_a", "A")]
-#[test_case("A/B/C/_a", "A")]
+#[test_case("A/B/_b1", "A/B")]
+#[test_case("A/B/_a1", "A")]
+#[test_case("A/B/C/_a1", "A")]
 #[test_case("_B/b1", "_B")]
 #[test_case("A/_dot", "..")]
 #[test_case("A/B/_A", ".")]
 #[test_case("A/B/_B", "A")]
 #[test_case("_B/.", "A")]
 #[test_case("_B/..", "_B/../..")] // we don't attempt to fold away dotdot in base path
-#[test_case("_x", ".")]
+#[test_case("_x1", ".")]
 fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
@@ -73,14 +73,14 @@ fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
         .dir("A/B/C")
         .file("A/a1")
         .file("A/B/b1")
-        .symlink_rel("_x", "x1")
+        .symlink_rel("_x1", "x1")
         .symlink_rel("_B", "A/B")
         .symlink_rel("A/_dot", "..")
         .symlink_rel("A/B/_A", "..")
         .symlink_rel("A/B/_B", ".")
-        .symlink_rel("A/B/_b", "b1")
-        .symlink_rel("A/B/_a", "../a1")
-        .symlink_rel("A/B/C/_a", "../../a1");
+        .symlink_rel("A/B/_b1", "b1")
+        .symlink_rel("A/B/_a1", "../a1")
+        .symlink_rel("A/B/C/_a1", "../../a1");
 
     check_real_parent_ok(&farm, path, expected);
 }
@@ -105,8 +105,8 @@ fn test_real_parent_rel_indirect_symlinks(path: &str, expected: &str) {
     check_real_parent_ok(&farm, path, expected);
 }
 
-#[test_case("A/B/_b", "A/B")]
-#[test_case("A/B/_a", "A")]
+#[test_case("A/B/_b1", "A/B")]
+#[test_case("A/B/_a1", "A")]
 #[test_case("A/B/_C", "A")]
 fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
@@ -116,8 +116,8 @@ fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
         .dir("A/C")
         .file("A/B/b1")
         .file("A/a1")
-        .symlink_abs("A/B/_b", "A/B/b1")
-        .symlink_abs("A/B/_a", "A/a1")
+        .symlink_abs("A/B/_b1", "A/B/b1")
+        .symlink_abs("A/B/_a1", "A/a1")
         .symlink_abs("A/B/_C", "A/C");
 
     check_real_parent_ok(&farm, path, farm.absolute(expected));
