@@ -11,6 +11,7 @@ use std::{
     fs::{self, create_dir, read_link},
     io::{stdout, Write},
     path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
 };
 use tempfile::{tempdir, TempDir};
 use test_case::test_case;
@@ -173,22 +174,49 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
 }
 
 #[derive(Debug)]
+struct Cwd {
+    mutex: Mutex<()>,
+}
+
+impl Cwd {
+    fn new() -> Cwd {
+        Cwd {
+            mutex: Mutex::new(()),
+        }
+    }
+
+    /// run the closure with cwd set to `path`
+    fn set_during<P, T, R, F>(&self, path: P, f: F, arg: T) -> R
+    where
+        P: AsRef<Path>,
+        F: Fn(T) -> R,
+    {
+        let _guard = match self.mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        set_current_dir(path.as_ref()).unwrap();
+        f(arg)
+    }
+}
+
+fn cwd() -> &'static Cwd {
+    static CWD: OnceLock<Cwd> = OnceLock::new();
+    CWD.get_or_init(Cwd::new)
+}
+
+#[derive(Debug)]
 struct LinkFarm {
+    cwd: &'static Cwd,
     tempdir: TempDir,
 }
 
 impl LinkFarm {
     fn new() -> Self {
         Self {
+            cwd: cwd(),
             tempdir: tempdir().unwrap(),
         }
-    }
-
-    // change current directory to root of link farm
-    fn set_current_dir(&self) -> &Self {
-        set_current_dir(self.tempdir.path()).unwrap();
-
-        self
     }
 
     // return absolute path within link farm
@@ -264,6 +292,23 @@ impl LinkFarm {
         path.strip_prefix(self.tempdir.path()).unwrap_or(path)
     }
 
+    /// run the closure within the link farm
+    fn run_within<T, R, F>(&self, f: F, arg: T) -> R
+    where
+        F: Fn(T) -> R,
+    {
+        self.cwd.set_during(self.tempdir.path(), f, arg)
+    }
+
+    /// run the closure somewhere other than the link farm
+    fn run_without<T, R, F>(&self, f: F, arg: T) -> R
+    where
+        F: Fn(T) -> R,
+    {
+        let other_dir = tempdir().unwrap();
+        self.cwd.set_during(other_dir.path(), f, arg)
+    }
+
     /// dump the link farm as a diagnostic
     fn dump<W>(&self, mut w: W)
     where
@@ -324,25 +369,31 @@ where
     farm.dump(stdout());
 
     // test with relative paths
-    farm.set_current_dir();
-    let actual = path.real_parent();
-    is_expected_ok(path, actual, expected, true);
+    farm.run_within(
+        |path| {
+            let actual = path.real_parent();
+            is_expected_ok(path, actual, expected, true);
+        },
+        path,
+    );
 
     // test with absolute paths
-    let other_dir = tempdir().unwrap();
-    set_current_dir(other_dir.path()).unwrap();
     let abs_path = farm.absolute(path);
     let abs_expected = farm.absolute(expected);
-    let actual = abs_path.real_parent();
-
-    // if we ascended out of the farm rootdir it's not straigtforward to verify the logical path
-    // that was returned, so we simply check the canonical version matches what was expected
-    let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
-    is_expected_ok(
+    farm.run_without(
+        |path| {
+            let actual = path.real_parent();
+            // if we ascended out of the farm rootdir it's not straigtforward to verify the logical path
+            // that was returned, so we simply check the canonical version matches what was expected
+            let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
+            is_expected_ok(
+                abs_path.as_path(),
+                actual,
+                abs_expected.as_path(),
+                check_logical,
+            );
+        },
         abs_path.as_path(),
-        actual,
-        abs_expected.as_path(),
-        check_logical,
     );
 }
 
@@ -381,9 +432,9 @@ where
     farm.dump(stdout());
 
     // test with relative paths
-    farm.set_current_dir();
+    let actual = farm.run_within(|path| path.real_parent(), path);
 
-    match path.real_parent() {
+    match actual {
         Ok(_) => panic!(
             "expected {:?} error but real_parent({}) succeeded",
             expected_error_kind,
