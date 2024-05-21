@@ -25,7 +25,14 @@ pub trait PathExt {
 impl PathExt for Path {
     fn real_parent(&self) -> Result<PathBuf, Error> {
         let mut real_path = RealPath::default();
-        real_path.parent(self)
+        real_path.parent(self).map(|p| {
+            // empty is not a valid path, so we return dot
+            if p.as_os_str().is_empty() {
+                AsRef::<Path>::as_ref(DOT).to_path_buf()
+            } else {
+                p
+            }
+        })
     }
 }
 

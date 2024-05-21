@@ -6,7 +6,6 @@ use std::os::unix::fs::{symlink as symlink_dir, symlink as symlink_file};
 use std::os::windows::fs::{symlink_dir, symlink_file};
 use std::{
     env::set_current_dir,
-    ffi::OsStr,
     fmt::Debug,
     fs::{self, create_dir, read_link},
     io::{stdout, Write},
@@ -23,7 +22,8 @@ use walkdir::WalkDir;
 // - relative symlinks have an underscore prefix
 // - absolute symlinks have an equals prefix
 
-#[test_case("x", "")]
+#[test_case("x", ".")]
+#[test_case("A", ".")]
 #[test_case("A/a", "A")]
 #[test_case("A/B/b", "A/B")]
 #[test_case("A/B/C", "A/B")]
@@ -58,12 +58,12 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
 #[test_case("A/B/_a", "A")]
 #[test_case("A/B/C/_a", "A")]
 #[test_case("_B/b", "_B")]
-#[test_case("A/_A", "..")]
-#[test_case("A/B/_A", "")]
+#[test_case("A/_dot", "..")]
+#[test_case("A/B/_A", ".")]
 #[test_case("A/B/_B", "A")]
 #[test_case("_B/.", "A")]
 #[test_case("_B/..", "_B/../..")] // we don't attempt to fold away dotdot in base path
-#[test_case("_x", "")]
+#[test_case("_x", ".")]
 fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
@@ -75,7 +75,7 @@ fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
         .file("A/B/b")
         .symlink_rel("_x", "x")
         .symlink_rel("_B", "A/B")
-        .symlink_rel("A/_A", "..")
+        .symlink_rel("A/_dot", "..")
         .symlink_rel("A/B/_A", "..")
         .symlink_rel("A/B/_B", ".")
         .symlink_rel("A/B/_b", "b")
@@ -349,13 +349,6 @@ impl LinkFarm {
     }
 }
 
-fn is_empty<P>(path: P) -> bool
-where
-    P: AsRef<Path>,
-{
-    AsRef::<OsStr>::as_ref(path.as_ref()).is_empty()
-}
-
 // check real_parent() is as expected, with both absolute and relative paths
 fn check_real_parent_ok<P1, P2>(farm: &LinkFarm, path: P1, expected: P2)
 where
@@ -408,14 +401,12 @@ fn is_expected_ok(
             if check_logical {
                 assert_eq!(actual, expected, "logical paths for {:?}", path);
             }
-            if !is_empty(&actual) {
-                assert_eq!(
-                    actual.canonicalize().unwrap(),
-                    expected.canonicalize().unwrap(),
-                    "canonical paths for {:?}",
-                    path
-                );
-            }
+            assert_eq!(
+                actual.canonicalize().unwrap(),
+                expected.canonicalize().unwrap(),
+                "canonical paths for {:?}",
+                path
+            );
         }
         Err(e) => panic!("real_parent({:?}) failed unexpectedly: {:?}", path, e),
     }
