@@ -9,6 +9,8 @@ The goal of this crate is to replace eager and early calls to `Path::canonicaliz
 
 In this way, the user's preferred and natural view of their filesystem is preserved, and parent paths are resolved correctly on a just-in-time basis.
 
+The extensive [tests](https://github.com/tesujimath/real_parent/blob/main/tests/path_ext.rs) are the best documentation of behaviour for various edge cases.
+
 ## Rationale
 
 The standard library method `Path::parent` is not safe in the presence of symlinks.
