@@ -57,7 +57,6 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
 #[test_case("A/B/_b1", "A/B")]
 #[test_case("A/B/_a1", "A")]
 #[test_case("A/B/C/_a1", "A")]
-#[test_case("_B/b1", "_B")]
 #[test_case("A/_dot", "..")]
 #[test_case("A/B/_A", ".")]
 #[test_case("A/B/_B", "A")]
@@ -85,10 +84,51 @@ fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
     check_real_parent_ok(&farm, path, expected);
 }
 
-#[test_case("A/B/C/_b", "_B")]
-#[test_case("__b", "_B")]
+#[test_case("_B/b1", "_B")]
+#[cfg(not(target_family = "windows"))]
+fn test_real_parent_rel_symlinks_not_windows(path: &str, expected: &str) {
+    let farm = LinkFarm::new();
+
+    farm.file("x1")
+        .dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/a1")
+        .file("A/B/b1")
+        .symlink_rel("_x1", "x1")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/_dot", "..")
+        .symlink_rel("A/B/_A", "..")
+        .symlink_rel("A/B/_B", ".")
+        .symlink_rel("A/B/_b1", "b1")
+        .symlink_rel("A/B/_a1", "../a1")
+        .symlink_rel("A/B/C/_a1", "../../a1");
+
+    check_real_parent_ok(&farm, path, expected);
+}
+
 #[test_case("A/B/__c", "A/B/C")]
 fn test_real_parent_rel_indirect_symlinks(path: &str, expected: &str) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/B/b1")
+        .file("A/B/C/c1")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/B/C/_b", "../../../_B/b1")
+        .symlink_rel("__b", "A/B/C/_b")
+        .symlink_rel("_c", "A/B/C/c1")
+        .symlink_rel("A/B/__c", "../../_c");
+
+    check_real_parent_ok(&farm, path, expected);
+}
+
+#[test_case("A/B/C/_b", "_B")]
+#[test_case("__b", "_B")]
+#[cfg(not(target_family = "windows"))]
+fn test_real_parent_rel_indirect_symlinks_not_windows(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.dir("A")

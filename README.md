@@ -48,23 +48,16 @@ It would be more ergonomic to avoid surfacing these underlying Nix store paths t
 
 Use of GNU Stow results in extensive symlink farms, with files appearing to exist in well-known directories alongside one another, where in reality they are symlinks to various locations in the filesystem.
 
-## Running Tests
+## Supported Platforms
 
-The tests rely on the current working directory being set to a tempdir for each test.
-Since the current working directory is a process-wide resource, this means tests must be run single threaded.
+`read_parent` runs on all platforms, with the following caveats on Windows.
 
-`cargo nextest` has been configured to run single-threaded.  If using the default `libtest` runner, be sure to invoke as:
+- since the tests create symbolic links, to run the tests on Windows you need to run as administrator. 🤯
 
-```
-cargo test -- --test-threads=1
-```
+- symbolic link behaviour on Windows is awkward, so some tests have had to be disabled on that platform
 
-Or, more simply:
-```
-cargo nextest run
-```
+Isolating exactly what is the cause for weird failures with symbolic edge cases on Windows is beyond both my level of Windows platform expertise and, frankly, interest.  Pull requests welcome in this area.
 
-Also, since the tests create symbolic links, to run the tests on Windows you need to run as administrator. 🤯
 
 ## License
 
