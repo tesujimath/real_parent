@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::{
     borrow::Cow,
     collections::HashSet,
@@ -7,18 +9,18 @@ use std::{
 };
 
 /// Extension methods for `std::path::Path` which are correct in the presence of symlinks.
-/// These methods preserve as much as possible of the relative and
-/// symlinked nature of their arguments, minimally resolving symlinks are necessary to maintain
-/// physical path correctness.
 pub trait PathExt {
     /// As per `Path::parent` except that it touches the filesystem to ensure that the resulting path
     /// is correct with respect to symlinks.
     ///
-    /// Any symlink expansion is minimal, as described above.  Therefore no attempt is made to fold away
-    /// dotdot in the path.
+    /// Any symlink expansion is minimal, that is, as much as possible of the relative and
+    /// symlinked nature of the receiver is preserved, minimally resolving symlinks are necessary to maintain
+    /// physical path correctness.
+    /// For example, no attempt is made to fold away dotdot in the path.
     ///
     /// Differences from `Path::parent`
-    /// - `".."parent() == ""`, which is incorrect, so `"..".real_parent() == "../.."`
+    /// - `Path::new("..").parent() == ""`, which is incorrect, so `Path::new("..").real_parent() == "../.."`
+    /// - `Path::new("foo").parent() == ""`, which is not a valid path, so `Path::new("foo").real_parent() == "."`
     fn real_parent(&self) -> Result<PathBuf, Error>;
 }
 

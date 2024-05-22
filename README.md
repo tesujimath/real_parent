@@ -1,13 +1,13 @@
 # real_parent
 
-Provides path extension methods which are safe in the presence of symlinks, in particular `real_parent`.
+Provides a path extension method `real_parent` which is safe in the presence of symlinks.
 
-Noting that `Path::parent` gives incorrect results in the presence of symlinks, there has been a general adoption of `Path::canonicalize` to mitigate this.
+Noting that `Path::parent` gives incorrect results in the presence of symlinks, `Path::canonicalize` has been used extensively to mitigate this.
 This comes, however, with some ergonomic drawbacks (see below).
 
-The intention is to replace eager and early calls to `Path::canonicalize` with late calls to `PathExt::real_parent`.
+The goal of this crate is to replace eager and early calls to `Path::canonicalize` with late calls to `PathExt::real_parent`.
 
-In this way, the user's preferred and natural view of their filesystem is preserved, and paths are resolved correctly on a just-in-time basis before requiring to actually touch the filesystem.
+In this way, the user's preferred and natural view of their filesystem is preserved, and parent paths are resolved correctly on a just-in-time basis.
 
 ## Rationale
 
@@ -19,7 +19,8 @@ the unpleasant result of making all paths absolute, and resolving symlinks into 
 
 Considering that symlinks exist in part to provide an abstracted view of the filesystem, eagerly resolving symlinks to their physical paths
 could be seen as a violation of encapsulation.  That is, a user may prefer to deal with their filesystem in terms of their symlinks rather than being
-exposed to absolute physical paths.
+exposed to absolute physical paths.  There is a further gain in preferring relative paths to absolute, namely independence from absolute location
+in the filesystem.
 
 Two scenarios illustate this problem.
 
@@ -29,7 +30,7 @@ Nix, and expecially Nix Home Manager, make heavy use of symlinks into the Nix st
 
 For example:
 
-```
+```text
 aya> ls -l ~/.config/nushell/*.nu | select name type target
 ╭───┬─────────────────────────────────────┬─────────┬──────────────────────────────────────────────────────────────────────────────────────────╮
 │ # │                name                 │  type   │                                          target                                          │
@@ -50,13 +51,13 @@ Use of GNU Stow results in extensive symlink farms, with files appearing to exis
 
 ## Supported Platforms
 
-`read_parent` runs on all platforms, with the following caveats on Windows.
+`real_parent` runs on all platforms, with the following caveats on Windows.
 
-- since the tests create symbolic links, to run the tests on Windows you need to run as administrator. 🤯
+- since the tests create symbolic links, to run the tests on Windows you need to run as administrator 🤯
 
 - symbolic link behaviour on Windows is awkward, so some tests have had to be disabled on that platform
 
-Isolating exactly what is the cause for weird failures with symbolic edge cases on Windows is beyond both my level of Windows platform expertise and, frankly, interest.  Pull requests welcome in this area.
+Isolating exactly what is the cause for weird failures with symbolic link edge cases on Windows is beyond both this author's level of Windows platform expertise and, frankly, interest.  Pull requests welcome in this area.  Note however that the standard library `Path::canonicalize` may also fail in these edge cases.
 
 
 ## License
