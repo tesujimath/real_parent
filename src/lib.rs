@@ -64,16 +64,12 @@ impl RealPath {
     }
 
     fn symlink_parent(&mut self, path: &Path) -> Result<Cow<'_, Path>, Error> {
-        println!("symlink_parent(\"{}\")", path.to_string_lossy());
-
         // check we are not in a cycle of twisty little symlinks, all alike
         let symlink_path = path.to_path_buf();
         if self.symlinks_visited.contains(&symlink_path) {
             return Err(Error::Cycle(symlink_path));
-        } else {
-            println!("record visit to symlink {}", symlink_path.to_string_lossy());
-            self.symlinks_visited.insert(symlink_path);
         }
+        self.symlinks_visited.insert(symlink_path);
 
         // we'll have to recurse until we find something that's not a symlink,
         let target = path.read_link().with_path_context(path)?;
@@ -91,35 +87,21 @@ impl RealPath {
     }
 
     fn dir_parent<'a>(&mut self, path: &'a Path) -> Result<Cow<'a, Path>, Error> {
-        let result: Result<Cow<'_, Path>, Error> = match path.file_name() {
-            Some(file_name) => {
-                println!(
-                    "dir_parent(\"{}\") with file_name == \"{}\"",
-                    path.to_string_lossy(),
-                    file_name.to_string_lossy()
-                );
-                Ok(path.parent().unwrap().into())
-            }
+        match path.file_name() {
+            Some(_) => Ok(path.parent().unwrap().into()),
+
             None => {
                 if path == AsRef::<Path>::as_ref(DOT) {
-                    println!("dir_parent(\"{}\") is dot", path.to_string_lossy());
                     Ok(Into::<PathBuf>::into(DOTDOT).into())
                 } else {
-                    println!("dir_parent(\"{}\") ends in dotdot", path.to_string_lossy());
                     // don't attempt to fold away dotdot in the base path
                     Ok(path.join(DOTDOT).into())
                 }
             }
-        };
-
-        println!("dir_parent(\"{}\") = {:?}", path.to_string_lossy(), result);
-
-        result
+        }
     }
 
     fn file_parent<'a>(&self, path: &'a Path) -> Result<Cow<'a, Path>, Error> {
-        println!("file_parent({})", path.to_string_lossy());
-
         Ok(path.parent().unwrap().into())
     }
 
@@ -135,12 +117,6 @@ impl RealPath {
 
         let mut resolving = origin.to_path_buf();
 
-        println!(
-            "calculating real_join(\"{}\", \"{}\")",
-            origin.to_string_lossy(),
-            other.to_string_lossy()
-        );
-
         for component in other.components() {
             use Component::*;
 
@@ -152,29 +128,19 @@ impl RealPath {
                         other.to_string_lossy()
                     )
                 }
-                ParentDir => {
-                    println!("calling \"{}\".real_parent()", resolving.to_string_lossy());
-                    match self.parent(resolving.as_path()) {
-                        Ok(path) => {
-                            resolving = path.to_path_buf();
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
+                ParentDir => match self.parent(resolving.as_path()) {
+                    Ok(path) => {
+                        resolving = path.to_path_buf();
                     }
-                }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                },
                 Normal(path_component) => {
                     resolving.push(path_component);
                 }
             }
         }
-
-        println!(
-            "real_join(\"{}\", \"{}\") = \"{}\"",
-            origin.to_string_lossy(),
-            other.to_string_lossy(),
-            resolving.to_string_lossy()
-        );
 
         Ok(resolving)
     }
