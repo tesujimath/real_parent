@@ -234,6 +234,11 @@ fn is_expected_ok(path: &Path, actual: io::Result<PathBuf>, expected: &Path, che
                 "canonical paths for {:?}",
                 path
             );
+            println!(
+                "verified \"{}\".real_parent() == \"{}\"",
+                path.to_string_lossy(),
+                actual.to_string_lossy()
+            );
         }
         Err(e) => panic!("real_parent({:?}) failed unexpectedly: {:?}", path, e),
     }
