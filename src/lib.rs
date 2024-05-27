@@ -21,20 +21,23 @@ pub trait PathExt {
     /// Differences from `Path::parent`
     /// - `Path::new("..").parent() == ""`, which is incorrect, so `Path::new("..").real_parent() == "../.."`
     /// - `Path::new("foo").parent() == ""`, which is not a valid path, so `Path::new("foo").real_parent() == "."`
-    fn real_parent(&self) -> Result<PathBuf, Error>;
+    fn real_parent(&self) -> io::Result<PathBuf>;
 }
 
 impl PathExt for Path {
-    fn real_parent(&self) -> Result<PathBuf, Error> {
+    fn real_parent(&self) -> io::Result<PathBuf> {
         let mut real_path = RealPath::default();
-        real_path.parent(self).map(|p| {
-            // empty is not a valid path, so we return dot
-            if p.as_os_str().is_empty() {
-                AsRef::<Path>::as_ref(DOT).to_path_buf()
-            } else {
-                p
-            }
-        })
+        real_path
+            .parent(self)
+            .map(|p| {
+                // empty is not a valid path, so we return dot
+                if p.as_os_str().is_empty() {
+                    AsRef::<Path>::as_ref(DOT).to_path_buf()
+                } else {
+                    p
+                }
+            })
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 }
 
@@ -148,9 +151,11 @@ impl RealPath {
     }
 }
 
-/// Our error type is an io:Error which includes the path which failed
+/// Our internal error type is an io:Error which includes the path which failed, or a cycle error.
+/// Once ErrorKinds are stabilised, we'll be able to return an io:Error with greater fidelity.
+/// See https://github.com/rust-lang/rust/issues/86442
 #[derive(Debug)]
-pub enum Error {
+enum Error {
     IO(io::Error, PathBuf),
     Cycle(PathBuf),
 }

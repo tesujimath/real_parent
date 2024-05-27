@@ -162,7 +162,8 @@ fn test_real_parent_symlink_cycle_error(path: &str) {
         .symlink_rel("A/B/_b3", "C/_b4")
         .symlink_rel("A/B/C/_b4", "../_b1");
 
-    check_real_parent_err(&farm, path, ErrorKind::Cycle);
+    // since real_parent now returns io:Error, we can't distinguish different kinds of failures
+    check_real_parent_err(&farm, path);
 }
 
 #[test_case("X")]
@@ -179,7 +180,8 @@ fn test_real_parent_io_error(path: &str) {
         .symlink_rel("_a", "A/a1")
         .symlink_rel("_b", "A/B/C/b1");
 
-    check_real_parent_err(&farm, path, ErrorKind::Io);
+    // since real_parent now returns io:Error, we can't distinguish different kinds of failures
+    check_real_parent_err(&farm, path);
 }
 
 #[test_case("_a", "A/A/A")]

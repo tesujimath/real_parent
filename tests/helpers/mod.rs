@@ -1,4 +1,4 @@
-use real_parent::{Error, PathExt};
+use real_parent::PathExt;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::{symlink as symlink_dir, symlink as symlink_file};
 #[cfg(target_family = "windows")]
@@ -7,6 +7,7 @@ use std::{
     env::set_current_dir,
     fmt::Debug,
     fs::{self, create_dir, read_link},
+    io,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
@@ -221,12 +222,7 @@ where
     );
 }
 
-fn is_expected_ok(
-    path: &Path,
-    actual: Result<PathBuf, Error>,
-    expected: &Path,
-    check_logical: bool,
-) {
+fn is_expected_ok(path: &Path, actual: io::Result<PathBuf>, expected: &Path, check_logical: bool) {
     match actual {
         Ok(actual) => {
             if check_logical {
@@ -243,8 +239,9 @@ fn is_expected_ok(
     }
 }
 
-// check real_parent() is the expected error, just for relative path
-pub fn check_real_parent_err<P>(farm: &LinkFarm, path: P, expected_error_kind: ErrorKind)
+// check real_parent() returns some kind of error,
+// but since real_parent now returns io:Error, we can't distinguish different kinds of failures
+pub fn check_real_parent_err<P>(farm: &LinkFarm, path: P)
 where
     P: AsRef<Path> + Debug,
 {
@@ -256,33 +253,10 @@ where
     // test with relative paths
     let actual = farm.run_within(|path| path.real_parent(), path);
 
-    match actual {
-        Ok(_) => panic!(
-            "expected {:?} error but real_parent({}) succeeded",
-            expected_error_kind,
+    if actual.is_ok() {
+        panic!(
+            "expected error but real_parent({}) succeeded",
             path.to_string_lossy()
-        ),
-        Err(Error::IO(e, error_path)) => assert_eq!(
-            ErrorKind::Io,
-            expected_error_kind,
-            "expected {:?} error but got {} on {}",
-            expected_error_kind,
-            e,
-            error_path.to_string_lossy(),
-        ),
-        Err(Error::Cycle(error_path)) => assert_eq!(
-            ErrorKind::Cycle,
-            expected_error_kind,
-            "expected {:?} error but got {:?} on {}",
-            expected_error_kind,
-            ErrorKind::Cycle,
-            error_path.to_string_lossy(),
-        ),
+        )
     }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum ErrorKind {
-    Io,
-    Cycle,
 }
