@@ -1,8 +1,6 @@
 use real_parent::PathExt;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::{symlink as symlink_dir, symlink as symlink_file};
-#[cfg(target_family = "windows")]
-use std::os::windows::fs::{symlink_dir, symlink_file};
 use std::{
     env::set_current_dir,
     fmt::Debug,
@@ -10,6 +8,12 @@ use std::{
     io,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
+};
+#[cfg(target_family = "windows")]
+use std::{
+    iter::once,
+    os::windows::fs::{symlink_dir, symlink_file},
+    path::{Component, Prefix},
 };
 use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
@@ -50,6 +54,7 @@ fn cwd() -> &'static Cwd {
 pub struct LinkFarm {
     cwd: &'static Cwd,
     tempdir: TempDir,
+    contains_absolute_symlinks: bool,
 }
 
 impl LinkFarm {
@@ -57,6 +62,7 @@ impl LinkFarm {
         Self {
             cwd: cwd(),
             tempdir: tempdir().unwrap(),
+            contains_absolute_symlinks: false,
         }
     }
 
@@ -117,7 +123,13 @@ impl LinkFarm {
 
     // create symlink to absolute path in link farm
     // note the reversed order of parameters
-    pub fn symlink_abs<P: AsRef<Path>, Q: AsRef<Path>>(&self, link: P, original: Q) -> &Self {
+    //
+    // also record that the farm now contains absolute symlinks
+    pub fn symlink_abs<P: AsRef<Path>, Q: AsRef<Path>>(
+        &mut self,
+        link: P,
+        original: Q,
+    ) -> &mut Self {
         let original = self.tempdir.path().join(original);
         let link = self.tempdir.path().join(link);
         if link.is_dir() {
@@ -125,6 +137,8 @@ impl LinkFarm {
         } else {
             symlink_file(original, link).unwrap()
         }
+
+        self.contains_absolute_symlinks = true;
 
         self
     }
@@ -197,7 +211,7 @@ where
     farm.run_within(
         |path| {
             let actual = path.real_parent();
-            is_expected_ok(path, actual, expected, true);
+            is_expected_ok(path, actual, expected, None, true);
         },
         path,
     );
@@ -208,32 +222,116 @@ where
     farm.run_without(
         |path| {
             let actual = path.real_parent();
-            // if we ascended out of the farm rootdir it's not straigtforward to verify the logical path
+            // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
             // that was returned, so we simply check the canonical version matches what was expected
             let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
             is_expected_ok(
                 abs_path.as_path(),
                 actual,
                 abs_expected.as_path(),
+                None,
                 check_logical,
             );
         },
         abs_path.as_path(),
     );
+
+    test_with_unc_path(farm, &abs_path, &abs_expected);
 }
 
-fn is_expected_ok(path: &Path, actual: io::Result<PathBuf>, expected: &Path, check_logical: bool) {
+#[cfg(target_family = "windows")]
+fn convert_disk_to_unc<P>(path: P) -> PathBuf
+where
+    P: AsRef<Path> + Debug,
+{
+    let mut components = path.as_ref().components();
+
+    let prefix = if let Some(Component::Prefix(prefix)) = components.next() {
+        if let Prefix::Disk(d) = prefix.kind() {
+            let prefix_path = Path::new(format!(r"\\localhost\{}$", char::from(d)).leak());
+            prefix_path.components().next().unwrap()
+        } else {
+            panic!(
+                "can't convert path {:?} to UNC: prefix {:?} is not a disk",
+                path,
+                prefix.kind()
+            )
+        }
+    } else {
+        panic!(
+            "can't convert path {:?} to UNC: failed to find prefix",
+            path
+        )
+    };
+
+    once(prefix).chain(components).collect::<PathBuf>()
+}
+
+#[cfg(target_family = "windows")]
+fn test_with_unc_path<P1, P2>(farm: &LinkFarm, abs_path: P1, abs_expected: P2)
+where
+    P1: AsRef<Path> + Debug,
+    P2: AsRef<Path> + Debug,
+{
+    let unc_path = convert_disk_to_unc(&abs_path);
+    let unc_expected = convert_disk_to_unc(&abs_expected);
+
+    farm.run_without(
+        |path| {
+            let actual = path.real_parent();
+            // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
+            // that was returned, so we simply check the canonical version matches what was expected
+            let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
+
+            // if the link farm contains absolute symlinks, we should accept either a disk path (from the absolute symlink) or a UNC path
+            is_expected_ok(
+                unc_path.as_path(),
+                actual,
+                unc_expected.as_path(),
+                farm.contains_absolute_symlinks
+                    .then_some(abs_expected.as_ref()),
+                check_logical,
+            );
+        },
+        unc_path.as_path(),
+    );
+}
+
+#[cfg(target_family = "unix")]
+fn test_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2)
+where
+    P1: AsRef<Path> + Debug,
+    P2: AsRef<Path> + Debug,
+{
+    // nothing to do here, no UNC paths on unix
+}
+
+// Check whether we got what was expected, allowing for an alternate expected case.
+// It is sufficient for either one to match.
+fn is_expected_ok(
+    path: &Path,
+    actual: io::Result<PathBuf>,
+    expected: &Path,
+    alt_expected: Option<&Path>,
+    check_logical: bool,
+) {
     match actual {
         Ok(actual) => {
-            if check_logical {
+            if check_logical && alt_expected.is_some_and(|alt_expected| actual != alt_expected) {
                 assert_eq!(actual, expected, "logical paths for {:?}", path);
             }
-            assert_eq!(
-                actual.canonicalize().unwrap(),
-                expected.canonicalize().unwrap(),
-                "canonical paths for {:?}",
-                path
-            );
+
+            let actual_canonical = actual.canonicalize().unwrap();
+            if alt_expected.is_some_and(|alt_expected| {
+                actual_canonical != alt_expected.canonicalize().unwrap()
+            }) {
+                assert_eq!(
+                    actual_canonical,
+                    expected.canonicalize().unwrap(),
+                    "canonical paths for {:?}",
+                    path
+                );
+            }
             println!(
                 "verified \"{}\".real_parent() == \"{}\"",
                 path.to_string_lossy(),
