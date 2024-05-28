@@ -133,14 +133,15 @@ fn test_real_parent_rel_indirect_symlinks_not_windows(path: &str, expected: &str
 #[test_case("A/B/=a1", "A")]
 #[test_case("A/B/=C", "A")]
 fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
-    let farm = LinkFarm::new();
+    let mut farm = LinkFarm::new();
 
     farm.dir("A")
         .dir("A/B")
         .dir("A/C")
         .file("A/B/b1")
-        .file("A/a1")
-        .symlink_abs("A/B/=b1", "A/B/b1")
+        .file("A/a1");
+
+    farm.symlink_abs("A/B/=b1", "A/B/b1")
         .symlink_abs("A/B/=a1", "A/a1")
         .symlink_abs("A/B/=C", "A/C");
 

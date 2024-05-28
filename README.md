@@ -33,7 +33,7 @@ Nix, and expecially Nix Home Manager, make heavy use of symlinks into the Nix st
 For example:
 
 ```text
-aya> ls -l ~/.config/nushell/*.nu | select name type target
+> ls -l ~/.config/nushell/*.nu | select name type target
 ╭───┬─────────────────────────────────────┬─────────┬──────────────────────────────────────────────────────────────────────────────────────────╮
 │ # │                name                 │  type   │                                          target                                          │
 ├───┼─────────────────────────────────────┼─────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
@@ -61,6 +61,15 @@ Use of GNU Stow results in extensive symlink farms, with files appearing to exis
 
 Isolating exactly what is the cause for weird failures with symbolic link edge cases on Windows is beyond both this author's level of Windows platform expertise and, frankly, interest.  Pull requests welcome in this area.  Note however that the standard library `Path::canonicalize` may also fail in these edge cases.
 
+## Tests
+
+The tests exercise both relative and absolute paths, including UNC paths on Windows, although this is not evident from the test case data.
+
+To see all the paths tested, run the tests with --nocapture, and look for lines containing `verified`, e.g. in Nushell:
+
+```text
+> cargo test -- --test-threads=1 --nocapture | lines | find verified | to text
+```
 
 ## License
 
