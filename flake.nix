@@ -21,6 +21,14 @@
               export RUSTC="${nightly}/bin/rustc";
               exec "${nightly}/bin/cargo" "$@"
           '';
+
+          rust-bin-multi-target = pkgs.rust-bin.stable.latest.default.override {
+            targets = [
+              "x86_64-unknown-linux-gnu"
+              "x86_64-pc-windows-gnu"
+              "x86_64-apple-darwin"
+            ];
+          };
         in
           with pkgs;
           {
@@ -31,7 +39,7 @@
                 cargo-nightly
                 cargo-udeps
                 cargo-outdated
-                rust-bin.stable.latest.default
+                rust-bin-multi-target
                 tokio-console
               ];
             };

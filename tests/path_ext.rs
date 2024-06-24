@@ -38,6 +38,15 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
     check_real_parent_ok(&farm, path, expected);
 }
 
+#[test]
+fn test_real_parent_root_dir() {
+    let farm = LinkFarm::new();
+
+    let path = root_dir();
+    let expected = path.as_path();
+    check_real_parent_ok(&farm, &path, expected);
+}
+
 #[test_case("A/B/_b1", "A/B")]
 #[test_case("A/B/_a1", "A")]
 #[test_case("A/B/C/_a1", "A")]

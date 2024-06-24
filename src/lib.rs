@@ -21,6 +21,7 @@ pub trait PathExt {
     /// Differences from `Path::parent`
     /// - `Path::new("..").parent() == ""`, which is incorrect, so `Path::new("..").real_parent() == "../.."`
     /// - `Path::new("foo").parent() == ""`, which is not a valid path, so `Path::new("foo").real_parent() == "."`
+    /// - where `Path::parent()` returns `None`, `real_parent()` returns self for absolute root path, and appends `..` otherwise
     fn real_parent(&self) -> io::Result<PathBuf>;
 }
 
@@ -99,8 +100,16 @@ impl RealPath {
                 if path == AsRef::<Path>::as_ref(DOT) {
                     Ok(Into::<PathBuf>::into(DOTDOT).into())
                 } else {
-                    // don't attempt to fold away dotdot in the base path
-                    Ok(path.join(DOTDOT).into())
+                    match path.components().last() {
+                        None | Some(Component::ParentDir) => {
+                            // don't attempt to fold away dotdot in the base path
+                            Ok(path.join(DOTDOT).into())
+                        }
+                        _ => {
+                            // parent of root dir is itself
+                            Ok(path.into())
+                        }
+                    }
                 }
             }
         }

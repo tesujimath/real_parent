@@ -6,17 +6,30 @@ use std::{
     fmt::Debug,
     fs::{self, create_dir, read_link},
     io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
 #[cfg(target_family = "windows")]
 use std::{
     iter::once,
     os::windows::fs::{symlink_dir, symlink_file},
-    path::{Component, Prefix},
+    path::Prefix,
 };
 use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
+
+/// Get root directory.
+///
+/// On Windows, this will be on the same drive as `tempfile::tempdir`.
+pub fn root_dir() -> PathBuf {
+    use Component::*;
+
+    let tmp = tempdir().unwrap();
+    tmp.path()
+        .components()
+        .filter(|c| matches!(c, Prefix(_) | RootDir))
+        .collect::<PathBuf>()
+}
 
 #[derive(Debug)]
 struct Cwd {
