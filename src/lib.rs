@@ -21,18 +21,20 @@ pub trait PathExt {
     /// Differences from `Path::parent`
     /// - `Path::new("..").parent() == ""`, which is incorrect, so `Path::new("..").real_parent() == "../.."`
     /// - `Path::new("foo").parent() == ""`, which is not a valid path, so `Path::new("foo").real_parent() == "."`
-    fn real_parent(&self) -> io::Result<PathBuf>;
+    ///
+    /// Returns Ok(None) on root directory.
+    fn real_parent(&self) -> io::Result<Option<PathBuf>>;
 }
 
 impl PathExt for Path {
-    fn real_parent(&self) -> io::Result<PathBuf> {
+    fn real_parent(&self) -> io::Result<Option<PathBuf>> {
         let mut real_path = RealPath::default();
         real_path
             .parent(self)
             .map(|p| {
                 // empty is not a valid path, so we return dot
-                if p.as_os_str().is_empty() {
-                    AsRef::<Path>::as_ref(DOT).to_path_buf()
+                if p.as_ref().is_some_and(|p| p.as_os_str().is_empty()) {
+                    Some(AsRef::<Path>::as_ref(DOT).to_path_buf())
                 } else {
                     p
                 }
@@ -47,9 +49,9 @@ struct RealPath {
 }
 
 impl RealPath {
-    fn parent(&mut self, path: &Path) -> Result<PathBuf, Error> {
+    fn parent(&mut self, path: &Path) -> Result<Option<PathBuf>, Error> {
         if path.as_os_str().is_empty() {
-            Ok(DOTDOT.into())
+            Ok(Some(DOTDOT.into()))
         } else {
             // Trailing dot is troublesome.  The problem is, it looks like a directory to symlink_metadata(),
             // but is invisible to file_name().  We mitigate that inconsistency with a light clean, via components().
@@ -57,18 +59,18 @@ impl RealPath {
             let metadata = path.symlink_metadata().with_path_context(&path)?;
 
             let parent = if metadata.is_symlink() {
-                self.symlink_parent(&path)
+                self.symlink_parent(&path)?
             } else if metadata.is_dir() {
-                self.dir_parent(&path)
+                self.dir_parent(&path)?
             } else {
-                self.file_parent(&path)
+                self.file_parent(&path)?
             };
 
-            parent.map(|p| p.into())
+            Ok(parent.map(|p| p.into()))
         }
     }
 
-    fn symlink_parent(&mut self, path: &Path) -> Result<Cow<'_, Path>, Error> {
+    fn symlink_parent(&mut self, path: &Path) -> Result<Option<Cow<'_, Path>>, Error> {
         // check we are not in a cycle of twisty little symlinks, all alike
         let symlink_path = path.to_path_buf();
         if self.symlinks_visited.contains(&symlink_path) {
@@ -85,34 +87,39 @@ impl RealPath {
         let resolved_target = if target.is_relative() {
             self.real_join(symlink_dir, &target)?
         } else {
-            target
+            Some(target)
         };
 
-        self.parent(resolved_target.as_path()).map(|p| p.into())
+        match resolved_target {
+            None => Ok(None),
+            Some(resolved_target) => Ok(self.parent(resolved_target.as_path())?.map(|p| p.into())),
+        }
     }
 
-    fn dir_parent<'a>(&mut self, path: &'a Path) -> Result<Cow<'a, Path>, Error> {
+    fn dir_parent<'a>(&mut self, path: &'a Path) -> Result<Option<Cow<'a, Path>>, Error> {
         match path.file_name() {
-            Some(_) => Ok(path.parent().unwrap().into()),
+            Some(_) => Ok(path.parent().map(|p| p.into())),
 
             None => {
                 if path == AsRef::<Path>::as_ref(DOT) {
-                    Ok(Into::<PathBuf>::into(DOTDOT).into())
+                    Ok(Some(Into::<PathBuf>::into(DOTDOT).into()))
                 } else {
                     // don't attempt to fold away dotdot in the base path
-                    Ok(path.join(DOTDOT).into())
+                    Ok(Some(path.join(DOTDOT).into()))
                 }
             }
         }
     }
 
-    fn file_parent<'a>(&self, path: &'a Path) -> Result<Cow<'a, Path>, Error> {
-        Ok(path.parent().unwrap().into())
+    fn file_parent<'a>(&self, path: &'a Path) -> Result<Option<Cow<'a, Path>>, Error> {
+        Ok(Some(path.parent().unwrap().into()))
     }
 
     // join paths
     // TODO maybe this should have a public interface
-    fn real_join<P1, P2>(&mut self, origin: P1, other: P2) -> Result<PathBuf, Error>
+    //
+    // falling off the top of root dir results in None, regardless of what else is to come in other
+    fn real_join<P1, P2>(&mut self, origin: P1, other: P2) -> Result<Option<PathBuf>, Error>
     where
         P1: AsRef<Path>,
         P2: AsRef<Path>,
@@ -134,7 +141,8 @@ impl RealPath {
                     )
                 }
                 ParentDir => match self.parent(resolving.as_path()) {
-                    Ok(path) => {
+                    Ok(None) => return Ok(None),
+                    Ok(Some(path)) => {
                         resolving = path.to_path_buf();
                     }
                     Err(e) => {
@@ -147,7 +155,7 @@ impl RealPath {
             }
         }
 
-        Ok(resolving)
+        Ok(Some(resolving))
     }
 }
 

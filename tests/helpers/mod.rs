@@ -6,7 +6,7 @@ use std::{
     fmt::Debug,
     fs::{self, create_dir, read_link},
     io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
 #[cfg(target_family = "windows")]
@@ -17,6 +17,19 @@ use std::{
 };
 use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
+
+/// Get root directory.
+///
+/// On Windows, this will be on the same drive as `tempfile::tempdir`.
+pub fn root_dir() -> PathBuf {
+    use Component::*;
+
+    let tmp = tempdir().unwrap();
+    tmp.path()
+        .components()
+        .filter(|c| matches!(c, Prefix(_) | RootDir))
+        .collect::<PathBuf>()
+}
 
 #[derive(Debug)]
 struct Cwd {
@@ -196,13 +209,13 @@ impl LinkFarm {
 }
 
 // check real_parent() is as expected, with both absolute and relative paths
-pub fn check_real_parent_ok<P1, P2>(farm: &LinkFarm, path: P1, expected: P2)
+pub fn check_real_parent_ok<P1, P2>(farm: &LinkFarm, path: P1, expected: Option<P2>)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
 {
     let path: &Path = path.as_ref();
-    let expected: &Path = expected.as_ref();
+    let expected: Option<&Path> = expected.as_ref().map(|p| p.as_ref());
 
     // so we can see what went wrong in any failing test
     farm.print();
@@ -218,17 +231,19 @@ where
 
     // test with absolute paths
     let abs_path = farm.absolute(path);
-    let abs_expected = farm.absolute(expected);
+    let abs_expected = expected.as_ref().map(|p| farm.absolute(p));
     farm.run_without(
         |path| {
             let actual = path.real_parent();
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
             // that was returned, so we simply check the canonical version matches what was expected
-            let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
+            let check_logical = actual
+                .as_ref()
+                .is_ok_and(|actual| actual.as_ref().is_some_and(|actual| farm.contains(actual)));
             is_expected_ok(
                 abs_path.as_path(),
                 actual,
-                abs_expected.as_path(),
+                abs_expected.as_deref(),
                 None,
                 check_logical,
             );
@@ -236,7 +251,7 @@ where
         abs_path.as_path(),
     );
 
-    test_with_unc_path(farm, &abs_path, &abs_expected);
+    test_with_unc_path(farm, &abs_path, abs_expected.as_ref());
 }
 
 #[cfg(target_family = "windows")]
@@ -298,7 +313,7 @@ where
 }
 
 #[cfg(target_family = "unix")]
-fn test_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2)
+fn test_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: Option<P2>)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
@@ -310,13 +325,13 @@ where
 // It is sufficient for either one to match.
 fn is_expected_ok(
     path: &Path,
-    actual: io::Result<PathBuf>,
-    expected: &Path,
+    actual: io::Result<Option<PathBuf>>,
+    expected: Option<&Path>,
     alt_expected: Option<&Path>,
     check_logical: bool,
 ) {
-    match actual {
-        Ok(actual) => {
+    match (actual, expected) {
+        (Ok(Some(actual)), Some(expected)) => {
             if check_logical && alt_expected.is_some_and(|alt_expected| actual != alt_expected) {
                 assert_eq!(actual, expected, "logical paths for {:?}", path);
             }
@@ -338,7 +353,16 @@ fn is_expected_ok(
                 actual.to_string_lossy()
             );
         }
-        Err(e) => panic!("real_parent({:?}) failed unexpectedly: {:?}", path, e),
+        (Ok(None), None) => (),
+        (Ok(Some(actual)), None) => panic!(
+            "real_parent({:?}) returned unexpected Some({:?})",
+            path, actual
+        ),
+        (Ok(None), Some(expected)) => panic!(
+            "real_parent({:?}) returned unexpected None instead of {:?}",
+            path, expected
+        ),
+        (Err(e), _) => panic!("real_parent({:?}) failed unexpectedly: {:?}", path, e),
     }
 }
 

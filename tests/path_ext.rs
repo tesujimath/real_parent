@@ -21,7 +21,6 @@ use test_case::test_case;
 #[test_case("", ".."; "empty path")]
 #[test_case(".", ".."; "bare dot")]
 #[test_case("..", "../.."; "bare dotdot")]
-#[test_case("../../../../../../../../../..", "../../../../../../../../../../.."; "dotdot overflow is ignored")]
 fn test_real_parent_files_directories(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
@@ -35,7 +34,24 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
         .file("A/.D/d1")
         .file("A/.D/.d1");
 
-    check_real_parent_ok(&farm, path, expected);
+    check_real_parent_ok(&farm, path, Some(expected));
+}
+
+#[test]
+fn test_real_parent_root_dir() {
+    let farm = LinkFarm::new();
+
+    let path = root_dir();
+    let no_path: Option<&str> = None;
+    check_real_parent_ok(&farm, path, no_path);
+}
+
+#[test_case("../../../../../../../../../.."; "dotdot overflow")]
+fn test_real_parent_none(path: &str) {
+    let farm = LinkFarm::new();
+
+    let no_path: Option<&str> = None;
+    check_real_parent_ok(&farm, path, no_path);
 }
 
 #[test_case("A/B/_b1", "A/B")]
@@ -65,7 +81,7 @@ fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
         .symlink_rel("A/B/_a1", "../a1")
         .symlink_rel("A/B/C/_a1", "../../a1");
 
-    check_real_parent_ok(&farm, path, expected);
+    check_real_parent_ok(&farm, path, Some(expected));
 }
 
 #[test_case("_B/b1", "_B")]
@@ -88,7 +104,7 @@ fn test_real_parent_rel_symlinks_not_windows(path: &str, expected: &str) {
         .symlink_rel("A/B/_a1", "../a1")
         .symlink_rel("A/B/C/_a1", "../../a1");
 
-    check_real_parent_ok(&farm, path, expected);
+    check_real_parent_ok(&farm, path, Some(expected));
 }
 
 #[test_case("A/B/__c", "A/B/C")]
@@ -106,7 +122,7 @@ fn test_real_parent_rel_indirect_symlinks(path: &str, expected: &str) {
         .symlink_rel("_c", "A/B/C/c1")
         .symlink_rel("A/B/__c", "../../_c");
 
-    check_real_parent_ok(&farm, path, expected);
+    check_real_parent_ok(&farm, path, Some(expected));
 }
 
 #[test_case("A/B/C/_b", "_B")]
@@ -126,7 +142,7 @@ fn test_real_parent_rel_indirect_symlinks_not_windows(path: &str, expected: &str
         .symlink_rel("_c", "A/B/C/c1")
         .symlink_rel("A/B/__c", "../../_c");
 
-    check_real_parent_ok(&farm, path, expected);
+    check_real_parent_ok(&farm, path, Some(expected));
 }
 
 #[test_case("A/B/=b1", "A/B")]
@@ -145,7 +161,7 @@ fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
         .symlink_abs("A/B/=a1", "A/a1")
         .symlink_abs("A/B/=C", "A/C");
 
-    check_real_parent_ok(&farm, path, farm.absolute(expected));
+    check_real_parent_ok(&farm, path, Some(farm.absolute(expected)));
 }
 
 #[test_case("A/_a1")]
@@ -197,7 +213,7 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
         .symlink_rel("A/_a", "A/_a")
         .symlink_rel("A/A/_a", "A/a1");
 
-    check_real_parent_ok(&farm, path, expected);
+    check_real_parent_ok(&farm, path, Some(expected));
 }
 
 mod helpers;
