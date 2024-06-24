@@ -13,7 +13,7 @@ use std::{
 use std::{
     iter::once,
     os::windows::fs::{symlink_dir, symlink_file},
-    path::{Component, Prefix},
+    path::Prefix,
 };
 use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
