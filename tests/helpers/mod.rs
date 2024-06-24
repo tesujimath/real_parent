@@ -317,7 +317,10 @@ fn is_expected_ok(
 ) {
     match actual {
         Ok(actual) => {
-            if check_logical && alt_expected.is_some_and(|alt_expected| actual != alt_expected) {
+            if check_logical
+                && (alt_expected.is_none()
+                    || alt_expected.is_some_and(|alt_expected| actual != alt_expected))
+            {
                 assert_eq!(actual, expected, "logical paths for {:?}", path);
             }
 
