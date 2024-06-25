@@ -82,11 +82,19 @@ impl LinkFarm {
     // return how many levels below root is the top of the link farm
     pub fn depth_below_root(&self) -> usize {
         use Component::*;
-        self.tempdir
+        let depth = self
+            .tempdir
             .path()
             .components()
             .filter(|c| matches!(c, Normal(_)))
-            .count()
+            .count();
+
+        println!(
+            "depth_below_root for {:?} is {}",
+            self.tempdir.path(),
+            depth
+        );
+        depth
     }
 
     // return absolute path within link farm
