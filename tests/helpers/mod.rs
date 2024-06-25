@@ -170,6 +170,22 @@ impl LinkFarm {
         self
     }
 
+    // create symlink to external path
+    pub fn symlink_external<P: AsRef<Path>, Q: AsRef<Path>>(
+        &mut self,
+        link: P,
+        original: Q,
+    ) -> &mut Self {
+        let link = self.tempdir.path().join(link);
+        if link.is_dir() {
+            symlink_dir(original, link).unwrap()
+        } else {
+            symlink_file(original, link).unwrap()
+        }
+
+        self
+    }
+
     pub fn strip_prefix<'a>(&self, path: &'a Path) -> &'a Path {
         path.strip_prefix(self.tempdir.path()).unwrap_or(path)
     }

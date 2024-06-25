@@ -252,6 +252,25 @@ fn test_is_real_root_ancestor() {
     );
 }
 
+#[test_case("_r1")]
+#[test_case("A/_r2")]
+#[test_case("A/_r1a")]
+#[test_case("A/_r2a")]
+fn test_is_real_root_via_symlinks(path: &str) {
+    let root_dir = root_dir();
+    let root_path = root_dir.as_path();
+    let mut farm = LinkFarm::new();
+
+    farm.dir("A");
+
+    farm.symlink_external("_r1", root_path)
+        .symlink_external("A/_r2", root_path)
+        .symlink_rel("A/_r1a", "../_r1")
+        .symlink_rel("A/_r2a", "_r2");
+
+    check_is_real_root_ok(&farm, path, true);
+}
+
 #[test_case("x1")]
 #[test_case("A")]
 #[test_case("A/a1")]
