@@ -168,13 +168,13 @@ impl LinkFarm {
         self.cwd.set_during(self.tempdir.path(), f, arg)
     }
 
-    /// run the closure somewhere other than the link farm
-    fn run_without<T, R, F>(&self, f: F, arg: T) -> R
+    /// run the closure with the specified cwd
+    fn run_with_cwd<T, R, F, P>(&self, f: F, arg: T, cwd: P) -> R
     where
         F: Fn(T) -> R,
+        P: AsRef<Path>,
     {
-        let other_dir = tempdir().unwrap();
-        self.cwd.set_during(other_dir.path(), f, arg)
+        self.cwd.set_during(cwd.as_ref(), f, arg)
     }
 
     /// dump the link farm as a diagnostic
@@ -232,7 +232,8 @@ where
     // test with absolute paths
     let abs_path = farm.absolute(path);
     let abs_expected = farm.absolute(expected);
-    farm.run_without(
+    let other_dir = tempdir().unwrap();
+    farm.run_with_cwd(
         |path| {
             let actual = path.real_parent();
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
@@ -247,6 +248,7 @@ where
             );
         },
         abs_path.as_path(),
+        other_dir.path(),
     );
 
     test_real_parent_with_unc_path(farm, &abs_path, &abs_expected);
@@ -380,7 +382,7 @@ where
     }
 }
 
-// check is_real_root() succeeds with false, with both absolute and relative paths
+// check is_real_root() succeeds with expected, with both absolute and relative paths
 pub fn check_is_real_root_ok<P>(farm: &LinkFarm, path: P, expected: bool)
 where
     P: AsRef<Path> + Debug,
@@ -401,15 +403,39 @@ where
 
     // test with absolute paths
     let abs_path = farm.absolute(path);
-    farm.run_without(
+    let other_dir = tempdir().unwrap();
+    farm.run_with_cwd(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(abs_path.as_path(), actual, expected);
         },
         abs_path.as_path(),
+        other_dir.path(),
     );
 
     test_is_real_root_with_unc_path(farm, &abs_path, expected);
+}
+
+// check is_real_root() succeeds with expected, with both absolute and relative paths
+pub fn check_is_real_root_in_cwd_ok<P1, P2>(cwd: P1, path: P2, expected: bool)
+where
+    P1: AsRef<Path> + Debug,
+    P2: AsRef<Path> + Debug,
+{
+    // for the mutual exclusion only:
+    let farm = LinkFarm::new();
+
+    let path: &Path = path.as_ref();
+
+    // test with relative paths
+    farm.run_with_cwd(
+        |path| {
+            let actual = path.is_real_root();
+            is_expected_ok(path, actual, expected);
+        },
+        path,
+        cwd,
+    );
 }
 
 #[cfg(target_family = "windows")]

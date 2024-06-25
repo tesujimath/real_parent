@@ -212,9 +212,19 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
 
 #[test]
 fn test_is_real_root_root_dir() {
-    let path = root_dir();
-    let actual = path.as_path().is_real_root().unwrap();
+    let root_dir = root_dir();
+
+    let actual = root_dir.as_path().is_real_root().unwrap();
     assert!(actual);
+}
+
+#[test_case(""; "empty")]
+#[test_case("."; "dot")]
+#[test_case(".."; "dotdot")]
+fn test_is_real_root_in_root_dir(path: &str) {
+    let root_dir = root_dir();
+
+    check_is_real_root_in_cwd_ok(root_dir.as_path(), path, true);
 }
 
 #[test_case("x1")]
