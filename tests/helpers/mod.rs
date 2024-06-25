@@ -79,6 +79,16 @@ impl LinkFarm {
         }
     }
 
+    // return how many levels below root is the top of the link farm
+    pub fn depth_below_root(&self) -> usize {
+        use Component::*;
+        self.tempdir
+            .path()
+            .components()
+            .filter(|c| matches!(c, Normal(_)))
+            .count()
+    }
+
     // return absolute path within link farm
     pub fn absolute<P>(&self, path: P) -> PathBuf
     where

@@ -227,6 +227,31 @@ fn test_is_real_root_in_root_dir(path: &str) {
     check_is_real_root_in_cwd_ok(root_dir.as_path(), path, true);
 }
 
+#[test]
+fn test_is_real_root_ancestor() {
+    let farm = LinkFarm::new();
+    let farm_depth = farm.depth_below_root();
+    let mut candidate = farm.absolute(".");
+
+    // loop until we have ascended to root
+    for _i in 0..farm_depth {
+        let candidate_path = candidate.as_path();
+        assert!(
+            !candidate_path.is_real_root().unwrap(),
+            "{:?} is not root",
+            candidate_path
+        );
+        candidate = candidate_path.real_parent().unwrap();
+    }
+
+    let candidate_path = candidate.as_path();
+    assert!(
+        candidate_path.is_real_root().unwrap(),
+        "{:?} is root",
+        candidate_path
+    );
+}
+
 #[test_case("x1")]
 #[test_case("A")]
 #[test_case("A/a1")]
