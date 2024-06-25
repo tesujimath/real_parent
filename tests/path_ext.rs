@@ -211,7 +211,7 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
 }
 
 #[test]
-fn test_is_root_root_dir() {
+fn test_is_real_root_root_dir() {
     let path = root_dir();
     let actual = path.as_path().is_real_root().unwrap();
     assert!(actual);
@@ -232,7 +232,7 @@ fn test_is_root_root_dir() {
 #[test_case(""; "empty path")]
 #[test_case("."; "bare dot")]
 #[test_case(".."; "bare dotdot")]
-fn test_is_root_not_files_directories(path: &str) {
+fn test_is_real_root_not_files_directories(path: &str) {
     let farm = LinkFarm::new();
 
     farm.file("x1")
@@ -245,7 +245,7 @@ fn test_is_root_not_files_directories(path: &str) {
         .file("A/.D/d1")
         .file("A/.D/.d1");
 
-    check_is_root_ok(&farm, path, false);
+    check_is_real_root_ok(&farm, path, false);
 }
 
 #[test_case("A/B/_b1")]
@@ -257,7 +257,7 @@ fn test_is_root_not_files_directories(path: &str) {
 #[test_case("_B/."; "dot")]
 #[test_case("_B/.."; "dotdot")]
 #[test_case("_x1")]
-fn test_is_root_not_rel_symlinks(path: &str) {
+fn test_is_real_root_not_rel_symlinks(path: &str) {
     let farm = LinkFarm::new();
 
     farm.file("x1")
@@ -275,7 +275,7 @@ fn test_is_root_not_rel_symlinks(path: &str) {
         .symlink_rel("A/B/_a1", "../a1")
         .symlink_rel("A/B/C/_a1", "../../a1");
 
-    check_is_root_ok(&farm, path, false);
+    check_is_real_root_ok(&farm, path, false);
 }
 
 mod helpers;

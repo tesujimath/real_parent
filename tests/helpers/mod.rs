@@ -380,8 +380,8 @@ where
     }
 }
 
-// check is_root() succeeds with false, with both absolute and relative paths
-pub fn check_is_root_ok<P>(farm: &LinkFarm, path: P, expected: bool)
+// check is_real_root() succeeds with false, with both absolute and relative paths
+pub fn check_is_real_root_ok<P>(farm: &LinkFarm, path: P, expected: bool)
 where
     P: AsRef<Path> + Debug,
 {
@@ -409,11 +409,11 @@ where
         abs_path.as_path(),
     );
 
-    test_is_root_with_unc_path(farm, &abs_path, expected);
+    test_is_real_root_with_unc_path(farm, &abs_path, expected);
 }
 
 #[cfg(target_family = "windows")]
-fn test_is_root_with_unc_path<P>(farm: &LinkFarm, abs_path: P, expected: bool)
+fn test_is_real_root_with_unc_path<P>(farm: &LinkFarm, abs_path: P, expected: bool)
 where
     P: AsRef<Path> + Debug,
 {
@@ -421,27 +421,15 @@ where
 
     farm.run_without(
         |path| {
-            let actual = path.is_root();
-            // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
-            // that was returned, so we simply check the canonical version matches what was expected
-            let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
-
-            // if the link farm contains absolute symlinks, we should accept either a disk path (from the absolute symlink) or a UNC path
-            is_expected_or_alt_path_ok(
-                unc_path.as_path(),
-                actual,
-                unc_expected.as_path(),
-                farm.contains_absolute_symlinks
-                    .then_some(abs_expected.as_ref()),
-                check_logical,
-            );
+            let actual = path.is_real_root();
+            is_expected_ok(unc_path.as_path(), actual, expected);
         },
         unc_path.as_path(),
     );
 }
 
 #[cfg(target_family = "unix")]
-fn test_is_root_with_unc_path<P>(_farm: &LinkFarm, _abs_path: P, _expected: bool)
+fn test_is_real_root_with_unc_path<P>(_farm: &LinkFarm, _abs_path: P, _expected: bool)
 where
     P: AsRef<Path> + Debug,
 {
@@ -454,11 +442,11 @@ fn is_expected_ok(path: &Path, actual: io::Result<bool>, expected: bool) {
             assert_eq!(actual, expected, "{:?}", path);
 
             println!(
-                "verified \"{}\".is_root() == \"{}\"",
+                "verified \"{}\".is_real_root() == \"{}\"",
                 path.to_string_lossy(),
                 actual
             );
         }
-        Err(e) => panic!("is_root({:?}) failed unexpectedly: {:?}", path, e),
+        Err(e) => panic!("is_real_root({:?}) failed unexpectedly: {:?}", path, e),
     }
 }
