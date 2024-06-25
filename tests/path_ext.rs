@@ -278,5 +278,24 @@ fn test_is_real_root_not_rel_symlinks(path: &str) {
     check_is_real_root_ok(&farm, path, false);
 }
 
+#[test_case("A/B/=b1")]
+#[test_case("A/B/=a1")]
+#[test_case("A/B/=C")]
+fn test_is_real_root_not_abs_symlinks(path: &str) {
+    let mut farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/C")
+        .file("A/B/b1")
+        .file("A/a1");
+
+    farm.symlink_abs("A/B/=b1", "A/B/b1")
+        .symlink_abs("A/B/=a1", "A/a1")
+        .symlink_abs("A/B/=C", "A/C");
+
+    check_is_real_root_ok(&farm, path, false);
+}
+
 mod helpers;
 use helpers::*;
