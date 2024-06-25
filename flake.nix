@@ -34,6 +34,7 @@
           {
             devShells.default = mkShell {
               nativeBuildInputs = [
+                bashInteractive
                 cargo-nextest
                 cargo-modules
                 cargo-nightly

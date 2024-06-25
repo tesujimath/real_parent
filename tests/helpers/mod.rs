@@ -79,6 +79,20 @@ impl LinkFarm {
         }
     }
 
+    // return how many levels below root is the top of the link farm
+    pub fn depth_below_root(&self) -> usize {
+        use Component::*;
+
+        // must canonicalize here because on MacOS tempdir contains a symlink
+        self.tempdir
+            .path()
+            .canonicalize()
+            .unwrap()
+            .components()
+            .filter(|c| matches!(c, Normal(_)))
+            .count()
+    }
+
     // return absolute path within link farm
     pub fn absolute<P>(&self, path: P) -> PathBuf
     where
@@ -156,6 +170,24 @@ impl LinkFarm {
         self
     }
 
+    // create symlink to external path
+    pub fn symlink_external<P: AsRef<Path>, Q: AsRef<Path>>(
+        &mut self,
+        link: P,
+        original: Q,
+    ) -> &mut Self {
+        let link = self.tempdir.path().join(link);
+        if link.is_dir() {
+            symlink_dir(original, link).unwrap()
+        } else {
+            symlink_file(original, link).unwrap()
+        }
+
+        self.contains_absolute_symlinks = true;
+
+        self
+    }
+
     pub fn strip_prefix<'a>(&self, path: &'a Path) -> &'a Path {
         path.strip_prefix(self.tempdir.path()).unwrap_or(path)
     }
@@ -168,13 +200,13 @@ impl LinkFarm {
         self.cwd.set_during(self.tempdir.path(), f, arg)
     }
 
-    /// run the closure somewhere other than the link farm
-    fn run_without<T, R, F>(&self, f: F, arg: T) -> R
+    /// run the closure with the specified cwd
+    fn run_without<T, R, F, P>(&self, f: F, arg: T, cwd: P) -> R
     where
         F: Fn(T) -> R,
+        P: AsRef<Path>,
     {
-        let other_dir = tempdir().unwrap();
-        self.cwd.set_during(other_dir.path(), f, arg)
+        self.cwd.set_during(cwd.as_ref(), f, arg)
     }
 
     /// dump the link farm as a diagnostic
@@ -224,7 +256,7 @@ where
     farm.run_within(
         |path| {
             let actual = path.real_parent();
-            is_expected_ok(path, actual, expected, None, true);
+            is_expected_or_alt_path_ok(path, actual, expected, None, true);
         },
         path,
     );
@@ -232,13 +264,14 @@ where
     // test with absolute paths
     let abs_path = farm.absolute(path);
     let abs_expected = farm.absolute(expected);
+    let other_dir = tempdir().unwrap();
     farm.run_without(
         |path| {
             let actual = path.real_parent();
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
             // that was returned, so we simply check the canonical version matches what was expected
             let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
-            is_expected_ok(
+            is_expected_or_alt_path_ok(
                 abs_path.as_path(),
                 actual,
                 abs_expected.as_path(),
@@ -247,9 +280,10 @@ where
             );
         },
         abs_path.as_path(),
+        other_dir.path(),
     );
 
-    test_with_unc_path(farm, &abs_path, &abs_expected);
+    test_real_parent_with_unc_path(farm, &abs_path, &abs_expected);
 }
 
 #[cfg(target_family = "windows")]
@@ -281,7 +315,7 @@ where
 }
 
 #[cfg(target_family = "windows")]
-fn test_with_unc_path<P1, P2>(farm: &LinkFarm, abs_path: P1, abs_expected: P2)
+fn test_real_parent_with_unc_path<P1, P2>(farm: &LinkFarm, abs_path: P1, abs_expected: P2)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
@@ -289,6 +323,7 @@ where
     let unc_path = convert_disk_to_unc(&abs_path);
     let unc_expected = convert_disk_to_unc(&abs_expected);
 
+    let other_dir = tempdir().unwrap();
     farm.run_without(
         |path| {
             let actual = path.real_parent();
@@ -297,7 +332,7 @@ where
             let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
 
             // if the link farm contains absolute symlinks, we should accept either a disk path (from the absolute symlink) or a UNC path
-            is_expected_ok(
+            is_expected_or_alt_path_ok(
                 unc_path.as_path(),
                 actual,
                 unc_expected.as_path(),
@@ -307,11 +342,12 @@ where
             );
         },
         unc_path.as_path(),
+        other_dir,
     );
 }
 
 #[cfg(target_family = "unix")]
-fn test_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2)
+fn test_real_parent_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
@@ -321,7 +357,7 @@ where
 
 // Check whether we got what was expected, allowing for an alternate expected case.
 // It is sufficient for either one to match.
-fn is_expected_ok(
+fn is_expected_or_alt_path_ok(
     path: &Path,
     actual: io::Result<PathBuf>,
     expected: &Path,
@@ -377,5 +413,102 @@ where
             "expected error but real_parent({}) succeeded",
             path.to_string_lossy()
         )
+    }
+}
+
+// check is_real_root() succeeds with expected, with both absolute and relative paths
+pub fn check_is_real_root_ok<P>(farm: &LinkFarm, path: P, expected: bool)
+where
+    P: AsRef<Path> + Debug,
+{
+    let path: &Path = path.as_ref();
+
+    // so we can see what went wrong in any failing test
+    farm.print();
+
+    // test with relative paths
+    farm.run_within(
+        |path| {
+            let actual = path.is_real_root();
+            is_expected_ok(path, actual, expected);
+        },
+        path,
+    );
+
+    // test with absolute paths
+    let abs_path = farm.absolute(path);
+    let other_dir = tempdir().unwrap();
+    farm.run_without(
+        |path| {
+            let actual = path.is_real_root();
+            is_expected_ok(abs_path.as_path(), actual, expected);
+        },
+        abs_path.as_path(),
+        other_dir.path(),
+    );
+
+    test_is_real_root_with_unc_path(farm, &abs_path, expected);
+}
+
+// check is_real_root() succeeds with expected, with both absolute and relative paths
+pub fn check_is_real_root_in_cwd_ok<P1, P2>(cwd: P1, path: P2, expected: bool)
+where
+    P1: AsRef<Path> + Debug,
+    P2: AsRef<Path> + Debug,
+{
+    // for the mutual exclusion only:
+    let farm = LinkFarm::new();
+
+    let path: &Path = path.as_ref();
+
+    // test with relative paths
+    farm.run_without(
+        |path| {
+            let actual = path.is_real_root();
+            is_expected_ok(path, actual, expected);
+        },
+        path,
+        cwd,
+    );
+}
+
+#[cfg(target_family = "windows")]
+fn test_is_real_root_with_unc_path<P>(farm: &LinkFarm, abs_path: P, expected: bool)
+where
+    P: AsRef<Path> + Debug,
+{
+    let unc_path = convert_disk_to_unc(&abs_path);
+
+    let other_dir = tempdir().unwrap();
+    farm.run_without(
+        |path| {
+            let actual = path.is_real_root();
+            is_expected_ok(unc_path.as_path(), actual, expected);
+        },
+        unc_path.as_path(),
+        other_dir,
+    );
+}
+
+#[cfg(target_family = "unix")]
+fn test_is_real_root_with_unc_path<P>(_farm: &LinkFarm, _abs_path: P, _expected: bool)
+where
+    P: AsRef<Path> + Debug,
+{
+    // nothing to do here, no UNC paths on unix
+} // Check whether we got what was expected
+
+fn is_expected_ok(path: &Path, actual: io::Result<bool>, expected: bool) {
+    match actual {
+        Ok(actual) => {
+            assert_eq!(actual, expected, "{:?}", path);
+
+            println!(
+                "verified \"{}\".is_real_root() == \"{}\"",
+                path.to_string_lossy(),
+                actual
+            );
+        }
+        Err(e) => panic!("is_real_root({:?}) failed unexpectedly: {:?}", path, e),
     }
 }

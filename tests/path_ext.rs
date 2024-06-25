@@ -1,3 +1,4 @@
+use real_parent::PathExt;
 use test_case::test_case;
 
 // Naming for files and directories in the link farms is as follows:
@@ -207,6 +208,172 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
         .symlink_rel("A/A/_a", "A/a1");
 
     check_real_parent_ok(&farm, path, expected);
+}
+
+#[test]
+fn test_is_real_root_root_dir() {
+    let root_dir = root_dir();
+
+    let actual = root_dir.as_path().is_real_root().unwrap();
+    assert!(actual);
+}
+
+#[test_case(""; "empty")]
+#[test_case("."; "dot")]
+#[test_case(".."; "dotdot")]
+fn test_is_real_root_in_root_dir(path: &str) {
+    let root_dir = root_dir();
+
+    check_is_real_root_in_cwd_ok(root_dir.as_path(), path, true);
+}
+
+#[test]
+fn test_is_real_root_ancestor() {
+    let farm = LinkFarm::new();
+    let farm_depth = farm.depth_below_root();
+    let mut candidate = farm.absolute(".");
+
+    // loop until we have ascended to root
+    for _i in 0..farm_depth {
+        let candidate_path = candidate.as_path();
+        assert!(
+            !candidate_path.is_real_root().unwrap(),
+            "{:?} is not root",
+            candidate_path
+        );
+        candidate = candidate_path.real_parent().unwrap();
+    }
+
+    let candidate_path = candidate.as_path();
+    assert!(
+        candidate_path.is_real_root().unwrap(),
+        "{:?} is root",
+        candidate_path
+    );
+}
+
+#[test_case("_r1")]
+#[test_case("A/_r2")]
+#[test_case("A/_r1a")]
+#[test_case("A/_r2a")]
+#[cfg(not(target_family = "windows"))]
+fn test_is_real_root_via_symlinks_not_windows(path: &str) {
+    let root_dir = root_dir();
+    let root_path = root_dir.as_path();
+    let mut farm = LinkFarm::new();
+
+    farm.dir("A");
+
+    farm.symlink_external("_r1", root_path)
+        .symlink_external("A/_r2", root_path)
+        .symlink_rel("A/_r1a", "../_r1")
+        .symlink_rel("A/_r2a", "_r2");
+
+    check_is_real_root_ok(&farm, path, true);
+}
+
+#[test_case("x1")]
+#[test_case("A")]
+#[test_case("A/a1")]
+#[test_case("A/B/b1")]
+#[test_case("A/B/C")]
+#[test_case("A/B/C/.."; "parent")]
+#[test_case("A/B/C/."; "trailing dot is ignored")]
+#[test_case("A/./B/C"; "intermediate dot remains")]
+#[test_case("A/../A/B/C"; "intermediate dotdot remains")]
+#[test_case("A/.D"; "hidden directory")]
+#[test_case("A/.D/d1"; "file in hidden directory")]
+#[test_case("A/.D/.d1"; "hidden file in hidden directory")]
+#[test_case(""; "empty path")]
+#[test_case("."; "bare dot")]
+#[test_case(".."; "bare dotdot")]
+fn test_is_real_root_not_files_directories(path: &str) {
+    let farm = LinkFarm::new();
+
+    farm.file("x1")
+        .dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .dir("A/.D")
+        .file("A/a1")
+        .file("A/B/b1")
+        .file("A/.D/d1")
+        .file("A/.D/.d1");
+
+    check_is_real_root_ok(&farm, path, false);
+}
+
+#[test_case("A/B/_b1")]
+#[test_case("A/B/_a1")]
+#[test_case("A/B/C/_a1")]
+#[test_case("A/_dot")]
+#[test_case("A/B/_A")]
+#[test_case("A/B/_B")]
+#[test_case("_B/."; "dot")]
+#[test_case("_B/.."; "dotdot")]
+#[test_case("_x1")]
+#[test_case("_B/b1")]
+#[cfg(not(target_family = "windows"))]
+fn test_is_real_root_not_rel_symlinks_not_windows(path: &str) {
+    let farm = LinkFarm::new();
+
+    farm.file("x1")
+        .dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/a1")
+        .file("A/B/b1")
+        .symlink_rel("_x1", "x1")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/_dot", "..")
+        .symlink_rel("A/B/_A", "..")
+        .symlink_rel("A/B/_B", ".")
+        .symlink_rel("A/B/_b1", "b1")
+        .symlink_rel("A/B/_a1", "../a1")
+        .symlink_rel("A/B/C/_a1", "../../a1");
+
+    check_is_real_root_ok(&farm, path, false);
+}
+
+#[test_case("A/B/__c")]
+#[test_case("A/B/C/_b")]
+#[test_case("__b")]
+#[cfg(not(target_family = "windows"))]
+fn test_is_real_root_not_rel_indirect_symlinks_not_windows(path: &str) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/B/b1")
+        .file("A/B/C/c1")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/B/C/_b", "../../../_B/b1")
+        .symlink_rel("__b", "A/B/C/_b")
+        .symlink_rel("_c", "A/B/C/c1")
+        .symlink_rel("A/B/__c", "../../_c");
+
+    check_is_real_root_ok(&farm, path, false);
+}
+
+#[test_case("A/B/=b1")]
+#[test_case("A/B/=a1")]
+#[test_case("A/B/=C")]
+#[cfg(not(target_family = "windows"))]
+fn test_is_real_root_not_abs_symlinks_not_windows(path: &str) {
+    let mut farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/C")
+        .file("A/B/b1")
+        .file("A/a1");
+
+    farm.symlink_abs("A/B/=b1", "A/B/b1")
+        .symlink_abs("A/B/=a1", "A/a1")
+        .symlink_abs("A/B/=C", "A/C");
+
+    check_is_real_root_ok(&farm, path, false);
 }
 
 mod helpers;
