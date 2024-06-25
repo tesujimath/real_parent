@@ -256,7 +256,8 @@ fn test_is_real_root_ancestor() {
 #[test_case("A/_r2")]
 #[test_case("A/_r1a")]
 #[test_case("A/_r2a")]
-fn test_is_real_root_via_symlinks(path: &str) {
+#[cfg(not(target_family = "windows"))]
+fn test_is_real_root_via_symlinks_not_windows(path: &str) {
     let root_dir = root_dir();
     let root_path = root_dir.as_path();
     let mut farm = LinkFarm::new();
