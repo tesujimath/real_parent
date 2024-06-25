@@ -169,7 +169,7 @@ impl LinkFarm {
     }
 
     /// run the closure with the specified cwd
-    fn run_with_cwd<T, R, F, P>(&self, f: F, arg: T, cwd: P) -> R
+    fn run_without<T, R, F, P>(&self, f: F, arg: T, cwd: P) -> R
     where
         F: Fn(T) -> R,
         P: AsRef<Path>,
@@ -233,7 +233,7 @@ where
     let abs_path = farm.absolute(path);
     let abs_expected = farm.absolute(expected);
     let other_dir = tempdir().unwrap();
-    farm.run_with_cwd(
+    farm.run_without(
         |path| {
             let actual = path.real_parent();
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
@@ -291,6 +291,7 @@ where
     let unc_path = convert_disk_to_unc(&abs_path);
     let unc_expected = convert_disk_to_unc(&abs_expected);
 
+    let other_dir = tempdir().unwrap();
     farm.run_without(
         |path| {
             let actual = path.real_parent();
@@ -309,6 +310,7 @@ where
             );
         },
         unc_path.as_path(),
+        other_dir,
     );
 }
 
@@ -404,7 +406,7 @@ where
     // test with absolute paths
     let abs_path = farm.absolute(path);
     let other_dir = tempdir().unwrap();
-    farm.run_with_cwd(
+    farm.run_without(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(abs_path.as_path(), actual, expected);
@@ -428,7 +430,7 @@ where
     let path: &Path = path.as_ref();
 
     // test with relative paths
-    farm.run_with_cwd(
+    farm.run_without(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(path, actual, expected);
@@ -445,12 +447,14 @@ where
 {
     let unc_path = convert_disk_to_unc(&abs_path);
 
+    let other_dir = tempdir().unwrap();
     farm.run_without(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(unc_path.as_path(), actual, expected);
         },
         unc_path.as_path(),
+        other_dir,
     );
 }
 
