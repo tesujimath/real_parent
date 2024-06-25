@@ -1,3 +1,4 @@
+use real_parent::PathExt;
 use test_case::test_case;
 
 // Naming for files and directories in the link farms is as follows:
@@ -207,6 +208,74 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
         .symlink_rel("A/A/_a", "A/a1");
 
     check_real_parent_ok(&farm, path, expected);
+}
+
+#[test]
+fn test_is_root_root_dir() {
+    let path = root_dir();
+    let actual = path.as_path().is_real_root().unwrap();
+    assert!(actual);
+}
+
+#[test_case("x1")]
+#[test_case("A")]
+#[test_case("A/a1")]
+#[test_case("A/B/b1")]
+#[test_case("A/B/C")]
+#[test_case("A/B/C/.."; "parent")]
+#[test_case("A/B/C/."; "trailing dot is ignored")]
+#[test_case("A/./B/C"; "intermediate dot remains")]
+#[test_case("A/../A/B/C"; "intermediate dotdot remains")]
+#[test_case("A/.D"; "hidden directory")]
+#[test_case("A/.D/d1"; "file in hidden directory")]
+#[test_case("A/.D/.d1"; "hidden file in hidden directory")]
+#[test_case(""; "empty path")]
+#[test_case("."; "bare dot")]
+#[test_case(".."; "bare dotdot")]
+fn test_is_root_not_files_directories(path: &str) {
+    let farm = LinkFarm::new();
+
+    farm.file("x1")
+        .dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .dir("A/.D")
+        .file("A/a1")
+        .file("A/B/b1")
+        .file("A/.D/d1")
+        .file("A/.D/.d1");
+
+    check_is_root_ok(&farm, path, false);
+}
+
+#[test_case("A/B/_b1")]
+#[test_case("A/B/_a1")]
+#[test_case("A/B/C/_a1")]
+#[test_case("A/_dot")]
+#[test_case("A/B/_A")]
+#[test_case("A/B/_B")]
+#[test_case("_B/."; "dot")]
+#[test_case("_B/.."; "dotdot")]
+#[test_case("_x1")]
+fn test_is_root_not_rel_symlinks(path: &str) {
+    let farm = LinkFarm::new();
+
+    farm.file("x1")
+        .dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/a1")
+        .file("A/B/b1")
+        .symlink_rel("_x1", "x1")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/_dot", "..")
+        .symlink_rel("A/B/_A", "..")
+        .symlink_rel("A/B/_B", ".")
+        .symlink_rel("A/B/_b1", "b1")
+        .symlink_rel("A/B/_a1", "../a1")
+        .symlink_rel("A/B/C/_a1", "../../a1");
+
+    check_is_root_ok(&farm, path, false);
 }
 
 mod helpers;

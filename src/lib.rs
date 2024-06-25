@@ -23,6 +23,10 @@ pub trait PathExt {
     /// - `Path::new("foo").parent() == ""`, which is not a valid path, so `Path::new("foo").real_parent() == "."`
     /// - where `Path::parent()` returns `None`, `real_parent()` returns self for absolute root path, and appends `..` otherwise
     fn real_parent(&self) -> io::Result<PathBuf>;
+
+    /// Return whether this is a path to the root directory, regardless of whether or not it is relative.
+    /// Empty path is treated as `.`, that is, current directory, for compatibility with `Path::parent`.
+    fn is_real_root(&self) -> io::Result<bool>;
 }
 
 impl PathExt for Path {
@@ -39,6 +43,20 @@ impl PathExt for Path {
                 }
             })
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+
+    fn is_real_root(&self) -> io::Result<bool> {
+        let path = if self.as_os_str().is_empty() {
+            AsRef::<Path>::as_ref(DOT)
+        } else {
+            self
+        };
+
+        // a canonical path cannot be empty
+        match path.canonicalize()?.components().last().unwrap() {
+            Component::RootDir => Ok(true),
+            _ => Ok(false),
+        }
     }
 }
 

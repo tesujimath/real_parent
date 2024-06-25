@@ -224,7 +224,7 @@ where
     farm.run_within(
         |path| {
             let actual = path.real_parent();
-            is_expected_ok(path, actual, expected, None, true);
+            is_expected_or_alt_path_ok(path, actual, expected, None, true);
         },
         path,
     );
@@ -238,7 +238,7 @@ where
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
             // that was returned, so we simply check the canonical version matches what was expected
             let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
-            is_expected_ok(
+            is_expected_or_alt_path_ok(
                 abs_path.as_path(),
                 actual,
                 abs_expected.as_path(),
@@ -249,7 +249,7 @@ where
         abs_path.as_path(),
     );
 
-    test_with_unc_path(farm, &abs_path, &abs_expected);
+    test_real_parent_with_unc_path(farm, &abs_path, &abs_expected);
 }
 
 #[cfg(target_family = "windows")]
@@ -281,7 +281,7 @@ where
 }
 
 #[cfg(target_family = "windows")]
-fn test_with_unc_path<P1, P2>(farm: &LinkFarm, abs_path: P1, abs_expected: P2)
+fn test_real_parent_with_unc_path<P1, P2>(farm: &LinkFarm, abs_path: P1, abs_expected: P2)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
@@ -297,7 +297,7 @@ where
             let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
 
             // if the link farm contains absolute symlinks, we should accept either a disk path (from the absolute symlink) or a UNC path
-            is_expected_ok(
+            is_expected_or_alt_path_ok(
                 unc_path.as_path(),
                 actual,
                 unc_expected.as_path(),
@@ -311,7 +311,7 @@ where
 }
 
 #[cfg(target_family = "unix")]
-fn test_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2)
+fn test_real_parent_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
@@ -321,7 +321,7 @@ where
 
 // Check whether we got what was expected, allowing for an alternate expected case.
 // It is sufficient for either one to match.
-fn is_expected_ok(
+fn is_expected_or_alt_path_ok(
     path: &Path,
     actual: io::Result<PathBuf>,
     expected: &Path,
@@ -377,5 +377,88 @@ where
             "expected error but real_parent({}) succeeded",
             path.to_string_lossy()
         )
+    }
+}
+
+// check is_root() succeeds with false, with both absolute and relative paths
+pub fn check_is_root_ok<P>(farm: &LinkFarm, path: P, expected: bool)
+where
+    P: AsRef<Path> + Debug,
+{
+    let path: &Path = path.as_ref();
+
+    // so we can see what went wrong in any failing test
+    farm.print();
+
+    // test with relative paths
+    farm.run_within(
+        |path| {
+            let actual = path.is_real_root();
+            is_expected_ok(path, actual, expected);
+        },
+        path,
+    );
+
+    // test with absolute paths
+    let abs_path = farm.absolute(path);
+    farm.run_without(
+        |path| {
+            let actual = path.is_real_root();
+            is_expected_ok(abs_path.as_path(), actual, expected);
+        },
+        abs_path.as_path(),
+    );
+
+    test_is_root_with_unc_path(farm, &abs_path, expected);
+}
+
+#[cfg(target_family = "windows")]
+fn test_is_root_with_unc_path<P>(farm: &LinkFarm, abs_path: P, expected: bool)
+where
+    P: AsRef<Path> + Debug,
+{
+    let unc_path = convert_disk_to_unc(&abs_path);
+
+    farm.run_without(
+        |path| {
+            let actual = path.is_root();
+            // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
+            // that was returned, so we simply check the canonical version matches what was expected
+            let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
+
+            // if the link farm contains absolute symlinks, we should accept either a disk path (from the absolute symlink) or a UNC path
+            is_expected_or_alt_path_ok(
+                unc_path.as_path(),
+                actual,
+                unc_expected.as_path(),
+                farm.contains_absolute_symlinks
+                    .then_some(abs_expected.as_ref()),
+                check_logical,
+            );
+        },
+        unc_path.as_path(),
+    );
+}
+
+#[cfg(target_family = "unix")]
+fn test_is_root_with_unc_path<P>(_farm: &LinkFarm, _abs_path: P, _expected: bool)
+where
+    P: AsRef<Path> + Debug,
+{
+    // nothing to do here, no UNC paths on unix
+} // Check whether we got what was expected
+
+fn is_expected_ok(path: &Path, actual: io::Result<bool>, expected: bool) {
+    match actual {
+        Ok(actual) => {
+            assert_eq!(actual, expected, "{:?}", path);
+
+            println!(
+                "verified \"{}\".is_root() == \"{}\"",
+                path.to_string_lossy(),
+                actual
+            );
+        }
+        Err(e) => panic!("is_root({:?}) failed unexpectedly: {:?}", path, e),
     }
 }
