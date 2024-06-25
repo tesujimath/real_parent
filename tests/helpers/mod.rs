@@ -183,6 +183,8 @@ impl LinkFarm {
             symlink_file(original, link).unwrap()
         }
 
+        self.contains_absolute_symlinks = true;
+
         self
     }
 
