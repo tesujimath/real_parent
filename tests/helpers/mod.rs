@@ -82,19 +82,15 @@ impl LinkFarm {
     // return how many levels below root is the top of the link farm
     pub fn depth_below_root(&self) -> usize {
         use Component::*;
-        let canonical_path = self.tempdir.path().canonicalize().unwrap();
-        let depth = canonical_path
+
+        // must canonicalize here because on MacOS tempdir contains a symlink
+        self.tempdir
+            .path()
+            .canonicalize()
+            .unwrap()
             .components()
             .filter(|c| matches!(c, Normal(_)))
-            .count();
-
-        println!(
-            "depth_below_root for {:?} with canonical {:?} is {}",
-            self.tempdir.path(),
-            canonical_path,
-            depth
-        );
-        depth
+            .count()
     }
 
     // return absolute path within link farm
