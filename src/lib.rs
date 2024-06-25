@@ -24,7 +24,7 @@ pub trait PathExt {
     /// - where `Path::parent()` returns `None`, `real_parent()` returns self for absolute root path, and appends `..` otherwise
     fn real_parent(&self) -> io::Result<PathBuf>;
 
-    /// Return whether this is a path to the root directory, regardless of whether or not it is relative.
+    /// Return whether this is a path to the root directory, regardless of whether or not it is relative or contains symlinks.
     /// Empty path is treated as `.`, that is, current directory, for compatibility with `Path::parent`.
     fn is_real_root(&self) -> io::Result<bool>;
 }
