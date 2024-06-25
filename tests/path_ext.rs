@@ -257,7 +257,8 @@ fn test_is_real_root_not_files_directories(path: &str) {
 #[test_case("_B/."; "dot")]
 #[test_case("_B/.."; "dotdot")]
 #[test_case("_x1")]
-fn test_is_real_root_not_rel_symlinks(path: &str) {
+#[cfg(not(target_family = "windows"))]
+fn test_is_real_root_not_rel_symlinks_not_windows(path: &str) {
     let farm = LinkFarm::new();
 
     farm.file("x1")
@@ -281,7 +282,8 @@ fn test_is_real_root_not_rel_symlinks(path: &str) {
 #[test_case("A/B/=b1")]
 #[test_case("A/B/=a1")]
 #[test_case("A/B/=C")]
-fn test_is_real_root_not_abs_symlinks(path: &str) {
+#[cfg(not(target_family = "windows"))]
+fn test_is_real_root_not_abs_symlinks_not_windows(path: &str) {
     let mut farm = LinkFarm::new();
 
     farm.dir("A")
