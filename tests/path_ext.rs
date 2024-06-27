@@ -254,16 +254,91 @@ fn test_real_clean_files_directories(path: &str, expected: &str) {
     check_path_ok(&farm, None, path, expected, Path::real_clean);
 }
 
+#[test]
+fn test_real_clean_root_dir() {
+    let farm = LinkFarm::new();
+
+    let path = root_dir();
+    let expected = path.as_path();
+    check_path_ok(&farm, None, &path, expected, Path::real_clean);
+}
+
 #[test_case("C/..", "A/B", ".")]
 #[test_case("../..", "A/B/C", "../..")]
 #[test_case("../C/../../B", "A/B/C", "../../B")]
-// #[test_case("../C/../../B/..", "A/B/C", "../..")]
+#[test_case("../C/../../B/..", "A/B/C", "../..")]
 fn test_real_clean_parent(path: &str, cwd: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.dir("A").dir("A/B").dir("A/B/C");
 
     check_path_ok(&farm, Some(cwd), path, expected, Path::real_clean);
+}
+
+#[test_case("A/B/_a1/..", "A")]
+#[test_case("A/B/_b1/..", "A/B")]
+#[test_case("A/B/C/_a1/../B", "A/B")]
+#[test_case("A/B/C/_A/B", "A/B/C/_A/B")]
+#[test_case("A/B/C/_A/../A", "A")]
+#[test_case("A/B/C/_B/..", "A")]
+#[test_case("A/B/C/_B/../B/C/..", "A/B")]
+fn test_real_clean_rel_symlinks(path: &str, expected: &str) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/a1")
+        .file("A/B/b1")
+        .symlink_rel("_x1", "x1")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/_dot", "..")
+        .symlink_rel("A/B/_A", "..")
+        .symlink_rel("A/B/_B", ".")
+        .symlink_rel("A/B/_b1", "b1")
+        .symlink_rel("A/B/_a1", "../a1")
+        .symlink_rel("A/B/C/_a1", "../../a1")
+        .symlink_rel("A/B/C/_A", "../../../A")
+        .symlink_rel("A/B/C/_B", "./..");
+
+    check_path_ok(&farm, None, path, expected, Path::real_clean);
+}
+
+#[test_case("A/B/__c/..", "A/B/C")]
+fn test_real_clean_rel_indirect_symlinks(path: &str, expected: &str) {
+    let farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/B/C")
+        .file("A/B/b1")
+        .file("A/B/C/c1")
+        .symlink_rel("_B", "A/B")
+        .symlink_rel("A/B/C/_b", "../../../_B/b1")
+        .symlink_rel("__b", "A/B/C/_b")
+        .symlink_rel("_c", "A/B/C/c1")
+        .symlink_rel("A/B/__c", "../../_c");
+
+    check_path_ok(&farm, None, path, expected, Path::real_clean);
+}
+
+#[test_case("A/B/=b1/..", "A/B")]
+#[test_case("A/B/=a1/..", "A")]
+#[test_case("A/B/=C/..", "A")]
+fn test_real_clean_abs_symlinks(path: &str, expected: &str) {
+    let mut farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/C")
+        .file("A/B/b1")
+        .file("A/a1");
+
+    farm.symlink_abs("A/B/=b1", "A/B/b1")
+        .symlink_abs("A/B/=a1", "A/a1")
+        .symlink_abs("A/B/=C", "A/C");
+
+    check_path_ok(&farm, None, path, farm.absolute(expected), Path::real_clean);
 }
 
 #[test]
