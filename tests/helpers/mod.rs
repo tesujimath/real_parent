@@ -43,8 +43,8 @@ impl WithCwd {
         }
     }
 
-    /// run the closure with cwd set to `path`
-    pub fn run<P, T, R, F>(&self, path: P, f: F, arg: T) -> R
+    /// run the closure with cwd set to `cwd`
+    pub fn run<P, T, R, F>(&self, cwd: P, f: F, arg: T) -> R
     where
         P: AsRef<Path>,
         F: Fn(T) -> R,
@@ -53,7 +53,7 @@ impl WithCwd {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        set_current_dir(path.as_ref()).unwrap();
+        set_current_dir(cwd.as_ref()).unwrap();
         f(arg)
     }
 }
@@ -65,7 +65,6 @@ pub fn with_cwd() -> &'static WithCwd {
 
 #[derive(Debug)]
 pub struct LinkFarm {
-    with_cwd: &'static WithCwd,
     tempdir: TempDir,
     contains_absolute_symlinks: bool,
 }
@@ -73,7 +72,6 @@ pub struct LinkFarm {
 impl LinkFarm {
     pub fn new() -> Self {
         Self {
-            with_cwd: with_cwd(),
             tempdir: tempdir().unwrap(),
             contains_absolute_symlinks: false,
         }
@@ -193,14 +191,6 @@ impl LinkFarm {
         path.strip_prefix(self.tempdir.path()).unwrap_or(path)
     }
 
-    /// run the closure within the link farm
-    fn run_within<T, R, F>(&self, f: F, arg: T) -> R
-    where
-        F: Fn(T) -> R,
-    {
-        self.with_cwd.run(self.tempdir.path(), f, arg)
-    }
-
     /// dump the link farm as a diagnostic
     fn print(&self) {
         for entry in WalkDir::new(self.tempdir.path())
@@ -233,8 +223,13 @@ impl LinkFarm {
 }
 
 // check actual is as expected, with both absolute and relative paths
-pub fn check_path_ok<P1, P2, F>(farm: &LinkFarm, path: P1, expected: P2, f: F)
-where
+pub fn check_path_ok<P1, P2, F>(
+    farm: &LinkFarm,
+    override_cwd: Option<&str>,
+    path: P1,
+    expected: P2,
+    f: F,
+) where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
     F: FnOnce(&Path) -> io::Result<PathBuf> + Copy,
@@ -246,7 +241,8 @@ where
     farm.print();
 
     // test with relative paths
-    farm.run_within(
+    with_cwd().run(
+        farm.absolute(override_cwd.unwrap_or(".")),
         |path| {
             let actual = f(path);
             is_expected_or_alt_path_ok(path, actual, expected, None, true);
@@ -254,29 +250,31 @@ where
         path,
     );
 
-    // test with absolute paths
-    let abs_path = farm.absolute(path);
-    let abs_expected = farm.absolute(expected);
-    let cwd = tempdir().unwrap();
-    with_cwd().run(
-        cwd.path(),
-        |path| {
-            let actual = f(path);
-            // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
-            // that was returned, so we simply check the canonical version matches what was expected
-            let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
-            is_expected_or_alt_path_ok(
-                abs_path.as_path(),
-                actual,
-                abs_expected.as_path(),
-                None,
-                check_logical,
-            );
-        },
-        abs_path.as_path(),
-    );
+    // test with absolute paths unless we've overridden the cwd
+    if override_cwd.is_none() {
+        let abs_path = farm.absolute(Path::new(override_cwd.unwrap_or("")).join(path));
+        let abs_expected = farm.absolute(expected);
+        let cwd = tempdir().unwrap();
+        with_cwd().run(
+            cwd.path(),
+            |path| {
+                let actual = f(path);
+                // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
+                // that was returned, so we simply check the canonical version matches what was expected
+                let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
+                is_expected_or_alt_path_ok(
+                    abs_path.as_path(),
+                    actual,
+                    abs_expected.as_path(),
+                    None,
+                    check_logical,
+                );
+            },
+            abs_path.as_path(),
+        );
 
-    test_with_unc_path(farm, &abs_path, &abs_expected, f);
+        test_with_unc_path(farm, &abs_path, &abs_expected, f);
+    }
 }
 
 #[cfg(target_family = "windows")]
@@ -402,7 +400,7 @@ where
     farm.print();
 
     // test with relative paths
-    let actual = farm.run_within(f, path);
+    let actual = with_cwd().run(farm.absolute("."), f, path);
 
     if actual.is_ok() {
         panic!("expected error but f({}) succeeded", path.to_string_lossy())
@@ -420,7 +418,8 @@ where
     farm.print();
 
     // test with relative paths
-    farm.run_within(
+    with_cwd().run(
+        farm.absolute("."),
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(path, actual, expected);
