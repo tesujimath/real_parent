@@ -1,6 +1,6 @@
 # real_parent
 
-Provides a path extension method `real_parent` which is safe in the presence of symlinks.
+Provides path extension methods including `real_parent` which are safe in the presence of symlinks.
 
 Noting that `Path::parent` gives incorrect results in the presence of symlinks, `Path::canonicalize` has been used extensively to mitigate this.
 This comes, however, with some ergonomic drawbacks (see below).

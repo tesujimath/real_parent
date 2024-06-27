@@ -16,7 +16,7 @@ pub trait PathExt {
     /// Any symlink expansion is minimal, that is, as much as possible of the relative and
     /// symlinked nature of the receiver is preserved, minimally resolving symlinks are necessary to maintain
     /// physical path correctness.
-    /// For example, no attempt is made to fold away dotdot in the path.
+    /// For example, no attempt is made to fold away `..` in the path.
     ///
     /// Differences from `Path::parent`
     /// - `Path::new("..").parent() == ""`, which is incorrect, so `Path::new("..").real_parent() == "../.."`
@@ -24,9 +24,21 @@ pub trait PathExt {
     /// - where `Path::parent()` returns `None`, `real_parent()` returns self for absolute root path, and appends `..` otherwise
     fn real_parent(&self) -> io::Result<PathBuf>;
 
+    /// Return a clean path, with `.` and `..` folded away as much as possible, and without expanding symlinks except where required
+    /// for correctness.
+    fn real_clean(&self) -> io::Result<PathBuf>;
+
     /// Return whether this is a path to the root directory, regardless of whether or not it is relative or contains symlinks.
     /// Empty path is treated as `.`, that is, current directory, for compatibility with `Path::parent`.
     fn is_real_root(&self) -> io::Result<bool>;
+}
+
+fn empty_to_dot(p: PathBuf) -> PathBuf {
+    if p.as_os_str().is_empty() {
+        AsRef::<Path>::as_ref(DOT).to_path_buf()
+    } else {
+        p
+    }
 }
 
 impl PathExt for Path {
@@ -34,14 +46,15 @@ impl PathExt for Path {
         let mut real_path = RealPath::default();
         real_path
             .parent(self)
-            .map(|p| {
-                // empty is not a valid path, so we return dot
-                if p.as_os_str().is_empty() {
-                    AsRef::<Path>::as_ref(DOT).to_path_buf()
-                } else {
-                    p
-                }
-            })
+            .map(empty_to_dot)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+
+    fn real_clean(&self) -> io::Result<PathBuf> {
+        let mut real_path = RealPath::default();
+        real_path
+            .clean(self)
+            .map(empty_to_dot)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
@@ -101,11 +114,7 @@ impl RealPath {
         // unwrap is safe because the last path component is a symlink
         let symlink_dir = path.parent().unwrap();
 
-        let resolved_target = if target.is_relative() {
-            self.real_join(symlink_dir, &target)?
-        } else {
-            target
-        };
+        let resolved_target = self.join(symlink_dir, &target)?;
 
         self.parent(resolved_target.as_path()).map(|p| p.into())
     }
@@ -120,7 +129,7 @@ impl RealPath {
                 } else {
                     match path.components().last() {
                         None | Some(Component::ParentDir) => {
-                            // don't attempt to fold away dotdot in the base path
+                            // don't attempt to fold away `..` in the base path
                             Ok(path.join(DOTDOT).into())
                         }
                         _ => {
@@ -137,44 +146,58 @@ impl RealPath {
         Ok(path.parent().unwrap().into())
     }
 
-    // join paths
-    // TODO maybe this should have a public interface
-    fn real_join<P1, P2>(&mut self, origin: P1, other: P2) -> Result<PathBuf, Error>
+    // join paths, folding away `..`
+    fn join<P1, P2>(&mut self, origin: P1, other: P2) -> Result<PathBuf, Error>
     where
         P1: AsRef<Path>,
         P2: AsRef<Path>,
     {
-        let origin = origin.as_ref();
+        use Component::*;
+
         let other = other.as_ref();
 
-        let mut resolving = origin.to_path_buf();
+        let (root, relative) = other
+            .components()
+            .partition::<Vec<_>, _>(|c| matches!(c, Prefix(_) | RootDir));
 
-        for component in other.components() {
-            use Component::*;
+        let mut resolving = if root.is_empty() {
+            origin.as_ref().to_path_buf()
+        } else {
+            root.iter().collect::<PathBuf>()
+        };
 
+        for component in relative {
             match component {
                 CurDir => (),
                 Prefix(_) | RootDir => {
                     panic!(
-                        "impossible absolute component in relative path \"{}\"",
-                        other.to_string_lossy()
+                        "impossible absolute component in relative part of path {:?}",
+                        other
                     )
                 }
                 ParentDir => match self.parent(resolving.as_path()) {
                     Ok(path) => {
-                        resolving = path.to_path_buf();
+                        resolving = path;
                     }
                     Err(e) => {
                         return Err(e);
                     }
                 },
-                Normal(path_component) => {
-                    resolving.push(path_component);
+                Normal(_) => {
+                    resolving.push(component);
                 }
             }
         }
 
         Ok(resolving)
+    }
+
+    // clean a path, folding away `..`
+    fn clean<P>(&mut self, path: P) -> Result<PathBuf, Error>
+    where
+        P: AsRef<Path>,
+    {
+        self.join("", path)
     }
 }
 
