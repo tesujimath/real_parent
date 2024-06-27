@@ -16,7 +16,7 @@ pub trait PathExt {
     /// Any symlink expansion is minimal, that is, as much as possible of the relative and
     /// symlinked nature of the receiver is preserved, minimally resolving symlinks are necessary to maintain
     /// physical path correctness.
-    /// For example, no attempt is made to fold away dotdot in the path.
+    /// For example, no attempt is made to fold away `..` in the path.
     ///
     /// Differences from `Path::parent`
     /// - `Path::new("..").parent() == ""`, which is incorrect, so `Path::new("..").real_parent() == "../.."`
@@ -24,7 +24,7 @@ pub trait PathExt {
     /// - where `Path::parent()` returns `None`, `real_parent()` returns self for absolute root path, and appends `..` otherwise
     fn real_parent(&self) -> io::Result<PathBuf>;
 
-    /// Return a clean path, with dotdot folded away as much as possible, and without expanding symlinks except where required
+    /// Return a clean path, with `.` and `..` folded away as much as possible, and without expanding symlinks except where required
     /// for correctness.
     fn real_clean(&self) -> io::Result<PathBuf>;
 
@@ -129,7 +129,7 @@ impl RealPath {
                 } else {
                     match path.components().last() {
                         None | Some(Component::ParentDir) => {
-                            // don't attempt to fold away dotdot in the base path
+                            // don't attempt to fold away `..` in the base path
                             Ok(path.join(DOTDOT).into())
                         }
                         _ => {
@@ -146,7 +146,7 @@ impl RealPath {
         Ok(path.parent().unwrap().into())
     }
 
-    // join paths, folding away dotdot
+    // join paths, folding away `..`
     fn join<P1, P2>(&mut self, origin: P1, other: P2) -> Result<PathBuf, Error>
     where
         P1: AsRef<Path>,
@@ -192,7 +192,7 @@ impl RealPath {
         Ok(resolving)
     }
 
-    // clean a path, folding away dotdot
+    // clean a path, folding away `..`
     fn clean<P>(&mut self, path: P) -> Result<PathBuf, Error>
     where
         P: AsRef<Path>,
