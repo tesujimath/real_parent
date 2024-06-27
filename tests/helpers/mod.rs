@@ -33,34 +33,41 @@ pub fn root_dir() -> PathBuf {
 
 #[derive(Debug)]
 pub struct WithCwd {
+    cwd: PathBuf,
     mutex: Mutex<()>,
 }
 
 impl WithCwd {
-    fn new() -> WithCwd {
+    fn new<P>(path: P) -> WithCwd
+    where
+        P: AsRef<Path>,
+    {
         WithCwd {
+            cwd: path.as_ref().to_path_buf(),
             mutex: Mutex::new(()),
         }
     }
 
-    /// run the closure with cwd set to `cwd`
-    pub fn run<P, T, R, F>(&self, cwd: P, f: F, arg: T) -> R
+    /// run the closure with our cwd
+    pub fn run<T, R, F>(&self, f: F, arg: T) -> R
     where
-        P: AsRef<Path>,
         F: Fn(T) -> R,
     {
         let _guard = match self.mutex.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        set_current_dir(cwd.as_ref()).unwrap();
+        set_current_dir(&self.cwd).unwrap();
         f(arg)
     }
 }
 
-pub fn with_cwd() -> &'static WithCwd {
+pub fn with_cwd<P>(cwd: P) -> &'static WithCwd
+where
+    P: AsRef<Path>,
+{
     static CWD: OnceLock<WithCwd> = OnceLock::new();
-    CWD.get_or_init(WithCwd::new)
+    CWD.get_or_init(|| WithCwd::new(cwd))
 }
 
 #[derive(Debug)]
@@ -241,8 +248,7 @@ pub fn check_path_ok<P1, P2, F>(
     farm.print();
 
     // test with relative paths
-    with_cwd().run(
-        farm.absolute(override_cwd.unwrap_or(".")),
+    with_cwd(farm.absolute(override_cwd.unwrap_or("."))).run(
         |path| {
             let actual = f(path);
             is_expected_or_alt_path_ok(path, actual, expected, None, true);
@@ -255,8 +261,7 @@ pub fn check_path_ok<P1, P2, F>(
         let abs_path = farm.absolute(Path::new(override_cwd.unwrap_or("")).join(path));
         let abs_expected = farm.absolute(expected);
         let cwd = tempdir().unwrap();
-        with_cwd().run(
-            cwd.path(),
+        with_cwd(cwd.path()).run(
             |path| {
                 let actual = f(path);
                 // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
@@ -400,7 +405,7 @@ where
     farm.print();
 
     // test with relative paths
-    let actual = with_cwd().run(farm.absolute("."), f, path);
+    let actual = with_cwd(farm.absolute(".")).run(f, path);
 
     if actual.is_ok() {
         panic!("expected error but f({}) succeeded", path.to_string_lossy())
@@ -418,8 +423,7 @@ where
     farm.print();
 
     // test with relative paths
-    with_cwd().run(
-        farm.absolute("."),
+    with_cwd(farm.absolute(".")).run(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(path, actual, expected);
@@ -430,8 +434,7 @@ where
     // test with absolute paths
     let abs_path = farm.absolute(path);
     let cwd = tempdir().unwrap();
-    with_cwd().run(
-        cwd.path(),
+    with_cwd(cwd.path()).run(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(abs_path.as_path(), actual, expected);
@@ -451,8 +454,7 @@ where
     let path: &Path = path.as_ref();
 
     // test with relative paths
-    with_cwd().run(
-        cwd,
+    with_cwd(cwd).run(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(path, actual, expected);
