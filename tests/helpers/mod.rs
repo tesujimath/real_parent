@@ -32,19 +32,19 @@ pub fn root_dir() -> PathBuf {
 }
 
 #[derive(Debug)]
-struct Cwd {
+pub struct WithCwd {
     mutex: Mutex<()>,
 }
 
-impl Cwd {
-    fn new() -> Cwd {
-        Cwd {
+impl WithCwd {
+    fn new() -> WithCwd {
+        WithCwd {
             mutex: Mutex::new(()),
         }
     }
 
     /// run the closure with cwd set to `path`
-    fn set_during<P, T, R, F>(&self, path: P, f: F, arg: T) -> R
+    pub fn run<P, T, R, F>(&self, path: P, f: F, arg: T) -> R
     where
         P: AsRef<Path>,
         F: Fn(T) -> R,
@@ -58,14 +58,14 @@ impl Cwd {
     }
 }
 
-fn cwd() -> &'static Cwd {
-    static CWD: OnceLock<Cwd> = OnceLock::new();
-    CWD.get_or_init(Cwd::new)
+pub fn with_cwd() -> &'static WithCwd {
+    static CWD: OnceLock<WithCwd> = OnceLock::new();
+    CWD.get_or_init(WithCwd::new)
 }
 
 #[derive(Debug)]
 pub struct LinkFarm {
-    cwd: &'static Cwd,
+    with_cwd: &'static WithCwd,
     tempdir: TempDir,
     contains_absolute_symlinks: bool,
 }
@@ -73,7 +73,7 @@ pub struct LinkFarm {
 impl LinkFarm {
     pub fn new() -> Self {
         Self {
-            cwd: cwd(),
+            with_cwd: with_cwd(),
             tempdir: tempdir().unwrap(),
             contains_absolute_symlinks: false,
         }
@@ -198,16 +198,7 @@ impl LinkFarm {
     where
         F: Fn(T) -> R,
     {
-        self.cwd.set_during(self.tempdir.path(), f, arg)
-    }
-
-    /// run the closure with the specified cwd
-    fn run_without<T, R, F, P>(&self, f: F, arg: T, cwd: P) -> R
-    where
-        F: Fn(T) -> R,
-        P: AsRef<Path>,
-    {
-        self.cwd.set_during(cwd.as_ref(), f, arg)
+        self.with_cwd.run(self.tempdir.path(), f, arg)
     }
 
     /// dump the link farm as a diagnostic
@@ -266,8 +257,9 @@ where
     // test with absolute paths
     let abs_path = farm.absolute(path);
     let abs_expected = farm.absolute(expected);
-    let other_dir = tempdir().unwrap();
-    farm.run_without(
+    let cwd = tempdir().unwrap();
+    with_cwd().run(
+        cwd.path(),
         |path| {
             let actual = f(path);
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
@@ -282,7 +274,6 @@ where
             );
         },
         abs_path.as_path(),
-        other_dir.path(),
     );
 
     test_with_unc_path(farm, &abs_path, &abs_expected, f);
@@ -439,14 +430,14 @@ where
 
     // test with absolute paths
     let abs_path = farm.absolute(path);
-    let other_dir = tempdir().unwrap();
-    farm.run_without(
+    let cwd = tempdir().unwrap();
+    with_cwd().run(
+        cwd.path(),
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(abs_path.as_path(), actual, expected);
         },
         abs_path.as_path(),
-        other_dir.path(),
     );
 
     test_is_real_root_with_unc_path(farm, &abs_path, expected);
@@ -458,19 +449,16 @@ where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
 {
-    // for the mutual exclusion only:
-    let farm = LinkFarm::new();
-
     let path: &Path = path.as_ref();
 
     // test with relative paths
-    farm.run_without(
+    with_cwd().run(
+        cwd,
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(path, actual, expected);
         },
         path,
-        cwd,
     );
 }
 

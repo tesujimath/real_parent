@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use real_parent::PathExt;
 use test_case::test_case;
 
@@ -36,7 +38,7 @@ fn test_real_parent_files_directories(path: &str, expected: &str) {
         .file("A/.D/d1")
         .file("A/.D/.d1");
 
-    check_path_ok(&farm, path, expected, |p| p.real_parent());
+    check_path_ok(&farm, path, expected, Path::real_parent);
 }
 
 #[test]
@@ -45,7 +47,7 @@ fn test_real_parent_root_dir() {
 
     let path = root_dir();
     let expected = path.as_path();
-    check_path_ok(&farm, &path, expected, |p| p.real_parent());
+    check_path_ok(&farm, &path, expected, Path::real_parent);
 }
 
 #[test_case("A/B/_b1", "A/B")]
@@ -78,7 +80,7 @@ fn test_real_parent_rel_symlinks(path: &str, expected: &str) {
         .symlink_rel("A/B/C/_a1", "../../a1")
         .symlink_rel("A/B/C/_b1", "./.././b1");
 
-    check_path_ok(&farm, path, expected, |p| p.real_parent());
+    check_path_ok(&farm, path, expected, Path::real_parent);
 }
 
 #[test_case("_B/b1", "_B")]
@@ -101,7 +103,7 @@ fn test_real_parent_rel_symlinks_not_windows(path: &str, expected: &str) {
         .symlink_rel("A/B/_a1", "../a1")
         .symlink_rel("A/B/C/_a1", "../../a1");
 
-    check_path_ok(&farm, path, expected, |p| p.real_parent());
+    check_path_ok(&farm, path, expected, Path::real_parent);
 }
 
 #[test_case("A/B/__c", "A/B/C")]
@@ -119,7 +121,7 @@ fn test_real_parent_rel_indirect_symlinks(path: &str, expected: &str) {
         .symlink_rel("_c", "A/B/C/c1")
         .symlink_rel("A/B/__c", "../../_c");
 
-    check_path_ok(&farm, path, expected, |p| p.real_parent());
+    check_path_ok(&farm, path, expected, Path::real_parent);
 }
 
 #[test_case("A/B/C/_b", "_B")]
@@ -139,7 +141,7 @@ fn test_real_parent_rel_indirect_symlinks_not_windows(path: &str, expected: &str
         .symlink_rel("_c", "A/B/C/c1")
         .symlink_rel("A/B/__c", "../../_c");
 
-    check_path_ok(&farm, path, expected, |p| p.real_parent());
+    check_path_ok(&farm, path, expected, Path::real_parent);
 }
 
 #[test_case("A/B/=b1", "A/B")]
@@ -158,7 +160,7 @@ fn test_real_parent_abs_symlinks(path: &str, expected: &str) {
         .symlink_abs("A/B/=a1", "A/a1")
         .symlink_abs("A/B/=C", "A/C");
 
-    check_path_ok(&farm, path, farm.absolute(expected), |p| p.real_parent());
+    check_path_ok(&farm, path, farm.absolute(expected), Path::real_parent);
 }
 
 #[test_case("A/_a1")]
@@ -177,7 +179,7 @@ fn test_real_parent_symlink_cycle_error(path: &str) {
         .symlink_rel("A/B/C/_b4", "../_b1");
 
     // since real_parent now returns io:Error, we can't distinguish different kinds of failures
-    check_path_err(&farm, path, |p| p.real_parent());
+    check_path_err(&farm, path, Path::real_parent);
 }
 
 #[test_case("X")]
@@ -195,7 +197,7 @@ fn test_real_parent_io_error(path: &str) {
         .symlink_rel("_b", "A/B/C/b1");
 
     // since real_parent now returns io:Error, we can't distinguish different kinds of failures
-    check_path_err(&farm, path, |p| p.real_parent());
+    check_path_err(&farm, path, Path::real_parent);
 }
 
 #[test_case("_a", "A/A/A")]
@@ -210,7 +212,7 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
         .symlink_rel("A/_a", "A/_a")
         .symlink_rel("A/A/_a", "A/a1");
 
-    check_path_ok(&farm, path, expected, |p| p.real_parent());
+    check_path_ok(&farm, path, expected, Path::real_parent);
 }
 
 #[test_case("x1", "x1")]
@@ -219,6 +221,7 @@ fn test_real_parent_symlink_cycle_look_alikes(path: &str, expected: &str) {
 #[test_case("A/B/b1", "A/B/b1")]
 #[test_case("A/B/C", "A/B/C")]
 #[test_case("A/B/C/..", "A/B")]
+#[test_case("./A/B/b1", "A/B/b1"; "initial dot removed")]
 #[test_case("A/B/C/.", "A/B/C"; "trailing dot is ignored")]
 #[test_case("A/./B/C", "A/B/C"; "intermediate dot removed")]
 #[test_case("A/../A/B/C", "A/B/C"; "intermediate dotdot folded away")]
@@ -242,7 +245,7 @@ fn test_real_clean_files_directories(path: &str, expected: &str) {
         .file("A/.D/d1")
         .file("A/.D/.d1");
 
-    check_path_ok(&farm, path, expected, |p| p.real_clean());
+    check_path_ok(&farm, path, expected, Path::real_clean);
 }
 
 #[test]
