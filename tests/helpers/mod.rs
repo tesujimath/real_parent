@@ -171,6 +171,7 @@ impl LinkFarm {
     }
 
     // create symlink to external path
+    #[cfg(not(target_family = "windows"))]
     pub fn symlink_external<P: AsRef<Path>, Q: AsRef<Path>>(
         &mut self,
         link: P,
@@ -240,11 +241,12 @@ impl LinkFarm {
     }
 }
 
-// check real_parent() is as expected, with both absolute and relative paths
-pub fn check_real_parent_ok<P1, P2>(farm: &LinkFarm, path: P1, expected: P2)
+// check actual is as expected, with both absolute and relative paths
+pub fn check_path_ok<P1, P2, F>(farm: &LinkFarm, path: P1, expected: P2, f: F)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
+    F: FnOnce(&Path) -> io::Result<PathBuf> + Copy,
 {
     let path: &Path = path.as_ref();
     let expected: &Path = expected.as_ref();
@@ -255,7 +257,7 @@ where
     // test with relative paths
     farm.run_within(
         |path| {
-            let actual = path.real_parent();
+            let actual = f(path);
             is_expected_or_alt_path_ok(path, actual, expected, None, true);
         },
         path,
@@ -267,7 +269,7 @@ where
     let other_dir = tempdir().unwrap();
     farm.run_without(
         |path| {
-            let actual = path.real_parent();
+            let actual = f(path);
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
             // that was returned, so we simply check the canonical version matches what was expected
             let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
@@ -283,7 +285,7 @@ where
         other_dir.path(),
     );
 
-    test_real_parent_with_unc_path(farm, &abs_path, &abs_expected);
+    test_with_unc_path(farm, &abs_path, &abs_expected, f);
 }
 
 #[cfg(target_family = "windows")]
@@ -315,10 +317,11 @@ where
 }
 
 #[cfg(target_family = "windows")]
-fn test_real_parent_with_unc_path<P1, P2>(farm: &LinkFarm, abs_path: P1, abs_expected: P2)
+fn test_with_unc_path<P1, P2, F>(farm: &LinkFarm, abs_path: P1, abs_expected: P2, f: F)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
+    F: FnOnce(&Path) -> io::Result<PathBuf> + Copy,
 {
     let unc_path = convert_disk_to_unc(&abs_path);
     let unc_expected = convert_disk_to_unc(&abs_expected);
@@ -326,7 +329,7 @@ where
     let other_dir = tempdir().unwrap();
     farm.run_without(
         |path| {
-            let actual = path.real_parent();
+            let actual = f(path);
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
             // that was returned, so we simply check the canonical version matches what was expected
             let check_logical = actual.as_ref().is_ok_and(|actual| farm.contains(actual));
@@ -347,10 +350,11 @@ where
 }
 
 #[cfg(target_family = "unix")]
-fn test_real_parent_with_unc_path<P1, P2>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2)
+fn test_with_unc_path<P1, P2, F>(_farm: &LinkFarm, _abs_path: P1, _abs_expected: P2, _f: F)
 where
     P1: AsRef<Path> + Debug,
     P2: AsRef<Path> + Debug,
+    F: FnOnce(&Path) -> io::Result<PathBuf> + Copy,
 {
     // nothing to do here, no UNC paths on unix
 }
@@ -385,20 +389,21 @@ fn is_expected_or_alt_path_ok(
                 );
             }
             println!(
-                "verified \"{}\".real_parent() == \"{}\"",
+                "verified f(\"{}\") == \"{}\"",
                 path.to_string_lossy(),
                 actual.to_string_lossy()
             );
         }
-        Err(e) => panic!("real_parent({:?}) failed unexpectedly: {:?}", path, e),
+        Err(e) => panic!("f({:?}) failed unexpectedly: {:?}", path, e),
     }
 }
 
-// check real_parent() returns some kind of error,
-// but since real_parent now returns io:Error, we can't distinguish different kinds of failures
-pub fn check_real_parent_err<P>(farm: &LinkFarm, path: P)
+// check function under test returns some kind of error,
+// but since error type is simply io:Error, we can't distinguish different kinds of failures
+pub fn check_path_err<P, F>(farm: &LinkFarm, path: P, f: F)
 where
     P: AsRef<Path> + Debug,
+    F: Fn(&Path) -> io::Result<PathBuf> + Copy,
 {
     let path: &Path = path.as_ref();
 
@@ -406,13 +411,10 @@ where
     farm.print();
 
     // test with relative paths
-    let actual = farm.run_within(|path| path.real_parent(), path);
+    let actual = farm.run_within(f, path);
 
     if actual.is_ok() {
-        panic!(
-            "expected error but real_parent({}) succeeded",
-            path.to_string_lossy()
-        )
+        panic!("expected error but f({}) succeeded", path.to_string_lossy())
     }
 }
 
