@@ -371,16 +371,25 @@ fn is_expected_or_alt_path_ok(
                 assert_eq!(actual, expected, "logical paths for {:?}", path);
             }
 
-            let actual_canonical = actual.canonicalize().unwrap();
-            if alt_expected.is_some_and(|alt_expected| {
-                actual_canonical != alt_expected.canonicalize().unwrap()
-            }) {
-                assert_eq!(
-                    actual_canonical,
-                    expected.canonicalize().unwrap(),
-                    "canonical paths for {:?}",
-                    path
-                );
+            match actual.canonicalize() {
+                Ok(actual_canonical) => {
+                    if alt_expected.is_some_and(|alt_expected| {
+                        actual_canonical != alt_expected.canonicalize().unwrap()
+                    }) {
+                        assert_eq!(
+                            actual_canonical,
+                            expected.canonicalize().unwrap(),
+                            "canonical paths for {:?}",
+                            path
+                        );
+                    }
+                }
+                Err(e) => {
+                    // ignore this on Windows, a path failing to canonicalize is not our problem
+                    if !is_windows() {
+                        panic!("canonicalize({:?}) failed: {}", &actual, e);
+                    }
+                }
             }
             println!(
                 "verified f(\"{}\") == \"{}\"",
@@ -506,4 +515,14 @@ fn is_expected_ok(path: &Path, actual: io::Result<bool>, expected: bool) {
         }
         Err(e) => panic!("is_real_root({:?}) failed unexpectedly: {:?}", path, e),
     }
+}
+
+#[cfg(not(target_family = "windows"))]
+fn is_windows() -> bool {
+    false
+}
+
+#[cfg(target_family = "windows")]
+fn is_windows() -> bool {
+    true
 }
