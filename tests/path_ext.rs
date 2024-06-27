@@ -281,31 +281,8 @@ fn test_real_clean_parent(path: &str, cwd: &str, expected: &str) {
 #[test_case("A/B/C/_A/../A", "A")]
 #[test_case("A/B/C/_B/..", "A")]
 #[test_case("A/B/C/_B/../B/C/..", "A/B")]
-fn test_real_clean_rel_symlinks(path: &str, expected: &str) {
-    let farm = LinkFarm::new();
-
-    farm.dir("A")
-        .dir("A/B")
-        .dir("A/B/C")
-        .file("A/a1")
-        .file("A/B/b1")
-        .symlink_rel("_x1", "x1")
-        .symlink_rel("_B", "A/B")
-        .symlink_rel("A/_dot", "..")
-        .symlink_rel("A/B/_A", "..")
-        .symlink_rel("A/B/_B", ".")
-        .symlink_rel("A/B/_b1", "b1")
-        .symlink_rel("A/B/_a1", "../a1")
-        .symlink_rel("A/B/C/_a1", "../../a1")
-        .symlink_rel("A/B/C/_A", "../../../A")
-        .symlink_rel("A/B/C/_B", "./..");
-
-    check_path_ok(&farm, None, path, expected, Path::real_clean);
-}
-
 #[test_case("A/B/C/_A/B", "A/B/C/_A/B")]
-// #[cfg(not(target_family = "windows"))]
-fn test_real_clean_rel_symlinks_not_windows(path: &str, expected: &str) {
+fn test_real_clean_rel_symlinks(path: &str, expected: &str) {
     let farm = LinkFarm::new();
 
     farm.dir("A")
@@ -512,6 +489,22 @@ fn test_is_real_root_not_rel_indirect_symlinks_not_windows(path: &str) {
 
 #[test_case("A/B/=b1")]
 #[test_case("A/B/=a1")]
+fn test_is_real_root_not_abs_symlinks(path: &str) {
+    let mut farm = LinkFarm::new();
+
+    farm.dir("A")
+        .dir("A/B")
+        .dir("A/C")
+        .file("A/B/b1")
+        .file("A/a1");
+
+    farm.symlink_abs("A/B/=b1", "A/B/b1")
+        .symlink_abs("A/B/=a1", "A/a1")
+        .symlink_abs("A/B/=C", "A/C");
+
+    check_is_real_root_ok(&farm, path, false);
+}
+
 #[test_case("A/B/=C")]
 #[cfg(not(target_family = "windows"))]
 fn test_is_real_root_not_abs_symlinks_not_windows(path: &str) {
