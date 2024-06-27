@@ -34,7 +34,7 @@ pub fn root_dir() -> PathBuf {
 #[derive(Debug)]
 pub struct WithCwd {
     cwd: PathBuf,
-    mutex: Mutex<()>,
+    mutex: &'static Mutex<()>,
 }
 
 impl WithCwd {
@@ -42,9 +42,11 @@ impl WithCwd {
     where
         P: AsRef<Path>,
     {
+        static MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        let mutex = MUTEX.get_or_init(|| Mutex::new(()));
         WithCwd {
             cwd: path.as_ref().to_path_buf(),
-            mutex: Mutex::new(()),
+            mutex,
         }
     }
 
@@ -62,12 +64,11 @@ impl WithCwd {
     }
 }
 
-pub fn with_cwd<P>(cwd: P) -> &'static WithCwd
+pub fn with_cwd<P>(cwd: P) -> WithCwd
 where
-    P: AsRef<Path>,
+    P: AsRef<Path> + Debug,
 {
-    static CWD: OnceLock<WithCwd> = OnceLock::new();
-    CWD.get_or_init(|| WithCwd::new(cwd))
+    WithCwd::new(cwd)
 }
 
 #[derive(Debug)]
@@ -320,8 +321,8 @@ where
     let unc_path = convert_disk_to_unc(&abs_path);
     let unc_expected = convert_disk_to_unc(&abs_expected);
 
-    let other_dir = tempdir().unwrap();
-    farm.run_without(
+    let cwd = tempdir().unwrap();
+    with_cwd(cwd.path()).run(
         |path| {
             let actual = f(path);
             // if we ascended out of the farm rootdir it's not straightforward to verify the logical path
@@ -339,7 +340,6 @@ where
             );
         },
         unc_path.as_path(),
-        other_dir,
     );
 }
 
@@ -388,7 +388,12 @@ fn is_expected_or_alt_path_ok(
                 actual.to_string_lossy()
             );
         }
-        Err(e) => panic!("f({:?}) failed unexpectedly: {:?}", path, e),
+        Err(e) => panic!(
+            "f({:?}) running in {:?} failed unexpectedly: {:?}",
+            path,
+            std::env::current_dir().unwrap(),
+            e
+        ),
     }
 }
 
@@ -442,7 +447,7 @@ where
         abs_path.as_path(),
     );
 
-    test_is_real_root_with_unc_path(farm, &abs_path, expected);
+    test_is_real_root_with_unc_path(&abs_path, expected);
 }
 
 // check is_real_root() succeeds with expected, with both absolute and relative paths
@@ -464,25 +469,24 @@ where
 }
 
 #[cfg(target_family = "windows")]
-fn test_is_real_root_with_unc_path<P>(farm: &LinkFarm, abs_path: P, expected: bool)
+fn test_is_real_root_with_unc_path<P>(abs_path: P, expected: bool)
 where
     P: AsRef<Path> + Debug,
 {
     let unc_path = convert_disk_to_unc(&abs_path);
 
-    let other_dir = tempdir().unwrap();
-    farm.run_without(
+    let cwd = tempdir().unwrap();
+    with_cwd(cwd.path()).run(
         |path| {
             let actual = path.is_real_root();
             is_expected_ok(unc_path.as_path(), actual, expected);
         },
         unc_path.as_path(),
-        other_dir,
     );
 }
 
 #[cfg(target_family = "unix")]
-fn test_is_real_root_with_unc_path<P>(_farm: &LinkFarm, _abs_path: P, _expected: bool)
+fn test_is_real_root_with_unc_path<P>(_abs_path: P, _expected: bool)
 where
     P: AsRef<Path> + Debug,
 {
