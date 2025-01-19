@@ -14,7 +14,7 @@ The extensive [tests](https://github.com/tesujimath/real_parent/blob/main/tests/
 ## Rationale
 
 The standard library method `Path::parent` is not safe in the presence of symlinks.
-For background information and a comprehensive analysis see the Plan 9 paper [Getting Dot-Dot Right](https://9p.io/sys/doc/lexnames.html).
+For background information and a comprehensive analysis see the Plan 9 paper [Getting Dot-Dot Right](https://9p.io/sys/doc/lexnames.html). See also [Path canonicalization is unergonomic](https://tesujimath.org/path-canonicalization-is-unergonomic/).
 
 So far the Rust community has leaned extensively on `Path::canonicalize` to mitigate this.  While this approach avoids path breakage, it has
 the unpleasant result of making all paths absolute, and resolving symlinks into their underlying physical paths.
